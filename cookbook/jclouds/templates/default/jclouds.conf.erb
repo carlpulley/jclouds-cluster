@@ -1,0 +1,19 @@
+description "Simple Akka Application Daemon: <%= node[:jclouds][:service] %>@<%= node[:jclouds][:port] %>"
+  
+respawn
+
+expect fork
+
+setuid <%= node[:jclouds][:uid] %>
+setgid users
+
+pre-start script
+        exec sh <%= node[:jclouds][:deploy_dir] %>/<%= node[:jclouds][:service] %>/bin/start '<%= node[:jclouds][:boot_class] %>' 2>&1 > /var/log/<%= node[:jclouds][:service] %>.log &
+end script
+
+post-start script
+  # wait for listen on port <%= node[:jclouds][:port] %>
+  while ! nc -q0 `hostname -i` <%= node[:jclouds][:port] %> </dev/null >/dev/null 2>&1; do
+    sleep 1;
+  done
+end script
