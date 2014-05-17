@@ -1,0 +1,15 @@
+[submodule "cookbook/java"]
+	path = cookbook/java
+	url = https://github.com/opscode-cookbooks/java.git
+[submodule "cookbook/chef-sbt"]
+	path = cookbook/chef-sbt
+	url = https://github.com/farmdawgnation/chef-sbt.git
+[submodule "cookbook/apt"]
+	path = cookbook/apt
+	url = https://github.com/opscode-cookbooks/apt.git
+[submodule "cookbook/git"]
+	path = cookbook/git
+	url = https://github.com/opscode-cookbooks/git.git
+[submodule "cookbook/scala"]
+	path = cookbook/scala
+	url = https://github.com/RiotGames/scala-cookbook.git
