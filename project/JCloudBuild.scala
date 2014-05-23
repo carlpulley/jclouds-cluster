@@ -31,58 +31,51 @@ trait Resolvers {
 }
 
 object V {
-  val ACTIVEMQ = "5.7.0"
-  val AKKA = "2.2.1"
-  val APACHE = "2.1"
-  val CAMEL = "2.11.1"
-  val CONFIG = "1.0.0"
-  val JCLOUDS = "1.6.1-incubating"
-  val JUNIT = "4.11"
+  val AKKA = "2.3.3"
+  val CONFIG = "1.2.1"
+  val JCLOUDS = "1.7.2"
   val LIFT = "2.5.1"
-  val LOG4J = "1.2.17"
-  val RXSCALA = "0.15.1"
   val SCALA = "2.10.2"
-  val SCALACHECK = "1.11.0"
-  val SCALATEST = "2.0.M6"
-  val SCALAZ = "7.1.0-M1"
-  val SCALAZCAMEL = "0.4-SNAPSHOT"
-  val SCALIKEJDBC = "[1.6,)"
-  val SLF4J = "1.7.5"
-  val SOOT = "2.5.0"
+  val SCALACHECK = "1.11.4"
+  val SCALATEST = "2.1.7"
 }
 
 trait Dependencies {
   val Testing = Seq(
-    "org.scalatest" % "scalatest_2.10" % V.SCALATEST % "test",
+    "org.scalatest"  %% "scalatest" % V.SCALATEST % "test",
     "org.scalacheck" %% "scalacheck" % V.SCALACHECK % "test"
-  )
-    
-  val Logging = Seq(
-    "org.slf4j" % "slf4j-log4j12" % V.SLF4J,
-    "log4j" % "log4j" % V.LOG4J
   )
 
   val Akka = Seq(
     "com.typesafe.akka" %% "akka-kernel" % V.AKKA,
     "com.typesafe.akka" %% "akka-actor" % V.AKKA,
     "com.typesafe.akka" %% "akka-remote" % V.AKKA,
-    "com.typesafe.akka" %% "akka-camel" % V.AKKA,
     "com.typesafe.akka" %% "akka-testkit" % V.AKKA % "test"
   )
   
   val JClouds = Seq(
+    // Other cloud providers are possible here (e.g. Google Compute Engine, Microsoft Azure, Virtualbox, etc.)
     "org.apache.jclouds.provider" % "aws-ec2" % V.JCLOUDS,
     "org.apache.jclouds.provider" % "rackspace-cloudservers-uk" % V.JCLOUDS,
+    // Other provisioners are possible (e.g. Puppet)
     "org.apache.jclouds.api" % "chef" % V.JCLOUDS,
+    // Miscellaneous support code
     "org.apache.jclouds.api" % "openstack-nova" % V.JCLOUDS,
     "org.apache.jclouds.driver" % "jclouds-sshj" % V.JCLOUDS,
     // Needed due to "issues"
     "com.google.code.findbugs" % "jsr305" % "1.3.9",
     "org.eclipse.jetty.orbit" % "javax.servlet" % "3.0.0.v201112011016" artifacts (Artifact("javax.servlet", "jar", "jar"))
   )
+
+  val Miscellaneous = Seq(
+    // Configuration
+    "com.typesafe" % "config" % V.CONFIG,
+    // JSON (used to configure Chef)
+    "net.liftweb" %% "lift-json" % V.LIFT
+  )
 }
 
-object JCloudBuild extends Build with Resolvers with Dependencies with TaskHelpers {
+object JCloudBuild extends Build with Resolvers with Dependencies {
   val jvmOptions = Seq("-Xms256M", "-Xmx1024M", "-XX:+UseParallelGC")
 
   lazy val JCloudSettings = Defaults.defaultSettings ++ AkkaKernelPlugin.distSettings ++ Seq(
@@ -92,17 +85,14 @@ object JCloudBuild extends Build with Resolvers with Dependencies with TaskHelpe
     shellPrompt := { st => Project.extract(st).currentProject.id + "> " },
     autoCompilerPlugins := true,
     resolvers := JCloudResolvers,
-    libraryDependencies := Akka ++ JClouds,
+    libraryDependencies := Akka ++ JClouds ++ Miscellaneous,
     checksums := Seq("sha1", "md5"),
-    scalacOptions ++= Seq("-deprecation", "-unchecked", "-feature"),
+    scalacOptions ++= Seq("-deprecation", "-unchecked", "-feature", "-language:experimental.macros"),
     javacOptions ++= Seq("-Xlint:unchecked", "-Xlint:deprecation"),
     javaOptions ++= jvmOptions,
     parallelExecution in Test := false,
-    scalacOptions += "-language:experimental.macros",
-    libraryDependencies <+= scalaVersion { v => compilerPlugin("org.scala-lang.plugins" % "continuations" % v) },
-    scalacOptions += "-P:continuations:enable",
     distJvmOptions in Dist := jvmOptions.mkString(" "),
-    outputDirectory in Dist := file("cookbook/cloud/files/default/cloud-deploy")
+    outputDirectory in Dist := file("cookbook/jclouds/files/default/jclouds-deploy")
   )
   
   lazy val root = Project(

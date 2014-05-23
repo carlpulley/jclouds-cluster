@@ -25,12 +25,14 @@ import org.jclouds.openstack.nova.v2_0.compute.options.NovaTemplateOptions.Build
 import org.jclouds.domain.LoginCredentials
 import org.jclouds.sshj.config.SshjSshClientModule
 
-abstract class Ubuntu(version: String, group: String) extends image.Ubuntu(version, group) {
-  private[this] lazy val region = config.get[String]("rackspace.region")
-  private[this] lazy val username = config.get[String]("rackspace.username")
-  private[this] lazy val apikey = config.get[String]("rackspace.apikey")
-  private[this] lazy val rackspace_private_key = scala.io.Source.fromFile(config.get[String]("ssl.certs") + "/rackspace").mkString
-  private[this] val rackspace_public_key = scala.io.Source.fromFile(config.get[String]("ssl.certs") + "/rackspace.pub").mkString
+// Provider specialization of images
+
+abstract class Ubuntu(version: String) extends image.Ubuntu(version) {
+  private[this] lazy val region = config.getString("rackspace.region")
+  private[this] lazy val username = config.getString("rackspace.username")
+  private[this] lazy val apikey = config.getString("rackspace.apikey")
+  private[this] lazy val rackspace_private_key = scala.io.Source.fromFile(config.getString("rackspace.ssh.private")).mkString
+  private[this] val rackspace_public_key = scala.io.Source.fromFile(config.getString("rackspace.ssh.public")).mkString
 
   override lazy val admin = LoginCredentials.builder()
     .user("root")

@@ -1,14 +1,5 @@
 # Example config file - edit to your taste.
 
-jclouds {
-  # Time to wait for scripting to complete (seconds)
-  script-complete = 600
-}
-
-ssl {
-  certs = "/path/to/.ssh"
-}
-
 chef {
   url = "Chef Server URL"
   user {
@@ -25,9 +16,16 @@ rackspace {
   region = "uk"
   username = "Rackspace username"
   apikey = "Rackspace API key"
+  ssh {
+    private = "Fullpath to SSH private key (i.e. PEM file)"
+  }
 }
 
 aws-ec2 {
   id = "Amazon Web Services Access Key ID"
   apikey = "Amazon Web Services Secret Access Key"
+  ssh {
+    public = "Fullpath to SSH public key"
+    private = "Fullpath to SSH private key"
+  }
 }

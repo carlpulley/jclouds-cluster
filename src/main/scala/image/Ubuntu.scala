@@ -19,7 +19,8 @@ package image
 
 import org.jclouds.compute.domain.OsFamily
 
-abstract class Ubuntu(version: String, group: String) extends Image(group) {
+// Basic Ubuntu instance that we wish to provision (here we are cloud infrastructure agnostic)
+abstract class Ubuntu(version: String) extends Image {
   template_builder
     .osFamily(OsFamily.UBUNTU)
     .osVersionMatches(version)

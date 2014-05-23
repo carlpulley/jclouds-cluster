@@ -22,12 +22,12 @@ import org.jclouds.ContextBuilder
 import org.jclouds.compute.ComputeServiceContext
 import org.jclouds.domain.LoginCredentials
 import org.jclouds.sshj.config.SshjSshClientModule
-import org.streum.configrity.Configuration
 
+// AWS EC2 provider configuration data (shared between provider image instances)
 trait Config { self: ClientContextConfig => 
-  private[this] lazy val id = config.get[String]("aws-ec2.id")
-  private[this] lazy val apikey = config.get[String]("aws-ec2.apikey")
-  protected[this] lazy val ec2_private_key = scala.io.Source.fromFile(config.get[String]("ssl.certs") + "/aws-ec2.pem").mkString
+  private[this] lazy val id = config.getString("aws-ec2.id")
+  private[this] lazy val apikey = config.getString("aws-ec2.apikey")
+  protected[this] lazy val ec2_private_key = scala.io.Source.fromFile(config.getString("aws-ec2.ssh.private")).mkString
 
   override lazy val client_context = ContextBuilder.newBuilder("aws-ec2")
       .credentials(id, apikey)
@@ -35,7 +35,9 @@ trait Config { self: ClientContextConfig =>
       .buildView(classOf[ComputeServiceContext])
 }
 
-abstract class Ubuntu(version: String, group: String) extends image.Ubuntu(version, group) with Config {
+// Provider specialization of images
+
+abstract class Ubuntu(version: String) extends image.Ubuntu(version) with Config {
   override lazy val admin = LoginCredentials.builder()
     .user("root")
     .privateKey(ec2_private_key)
@@ -44,7 +46,7 @@ abstract class Ubuntu(version: String, group: String) extends image.Ubuntu(versi
 }
 
 // WARNING: Windows is currently to be considered experimental!
-abstract class Windows(version: String, group: String) extends image.Windows(version, group) with Config {
+abstract class Windows(version: String) extends image.Windows(version) with Config {
   override lazy val admin = LoginCredentials.builder()
     .user("Administrator")
     .privateKey(ec2_private_key)
