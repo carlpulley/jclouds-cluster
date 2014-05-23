@@ -17,7 +17,8 @@ rackspace {
   username = "Rackspace username"
   apikey = "Rackspace API key"
   ssh {
-    private = "Fullpath to SSH private key (i.e. PEM file)"
+    public = "Fullpath to SSH public key"
+    private = "Fullpath to SSH private key"
   }
 }
 
@@ -25,7 +26,6 @@ aws-ec2 {
   id = "Amazon Web Services Access Key ID"
   apikey = "Amazon Web Services Secret Access Key"
   ssh {
-    public = "Fullpath to SSH public key"
-    private = "Fullpath to SSH private key"
+    private = "Fullpath to SSH private key (i.e. PEM file)"
   }
 }
