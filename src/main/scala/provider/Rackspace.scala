@@ -25,6 +25,8 @@ import org.jclouds.openstack.nova.v2_0.compute.options.NovaTemplateOptions.Build
 import org.jclouds.domain.LoginCredentials
 import org.jclouds.sshj.config.SshjSshClientModule
 
+// Reference: http://jclouds.apache.org/guides/rackspace/
+
 // Provider specialization of images
 
 abstract class Ubuntu(version: String) extends image.Ubuntu(version) {

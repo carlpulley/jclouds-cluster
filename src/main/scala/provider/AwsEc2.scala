@@ -21,7 +21,10 @@ import scala.collection.JavaConversions._
 import org.jclouds.ContextBuilder
 import org.jclouds.compute.ComputeServiceContext
 import org.jclouds.domain.LoginCredentials
+import org.jclouds.ec2.compute.options.EC2TemplateOptions
 import org.jclouds.sshj.config.SshjSshClientModule
+
+// Reference: http://jclouds.apache.org/guides/aws-ec2/
 
 // AWS EC2 provider configuration data (shared between provider image instances)
 trait Config { self: ClientContextConfig => 
@@ -39,10 +42,13 @@ trait Config { self: ClientContextConfig =>
 
 abstract class Ubuntu(version: String) extends image.Ubuntu(version) with Config {
   override lazy val admin = LoginCredentials.builder()
-    .user("root")
+    .user("ubuntu")
     .privateKey(ec2_private_key)
     .authenticateSudo(false)
     .build()
+
+  template_builder
+    .options(template_builder.build.getOptions.asInstanceOf[EC2TemplateOptions].keyPair("aws-ec2"))
 }
 
 // WARNING: Windows is currently to be considered experimental!

@@ -49,7 +49,7 @@ import scala.language.implicitConversions
 
 // We factor these items into a trait so that other classes may mix them in via self-types
 trait ClientContextConfig {
-  protected[this] val config = ConfigFactory.load("cloud.conf")
+  protected[this] val config = ConfigFactory.load("jclouds.conf")
 
   protected[this] val client_context: ComputeServiceContext // Usage: 'override lazy val' in children
 }
@@ -105,6 +105,27 @@ abstract class Image(val group: String = "jclouds") extends ClientContextConfig 
     node = Some(client.createNodesInGroup(group, 1, template).head)
     client.runScriptOnNode(node.get.getId(), bootstrap_node, overrideLoginCredentials(admin))
     node.get
+  }
+
+  // Used to suspend/save this machine instance (not supported by all providers)
+  def suspend() {
+    node.map( metadata => {
+      client.suspendNode(metadata.getId())
+    })
+  }
+
+  // Used to resume a suspended machine instance (not supported by all providers)
+  def resume() {
+    node.map( metadata => {
+      client.resumeNode(metadata.getId())
+    })
+  }
+
+  // Used to reboot the instance
+  def reboot() {
+    node.map( metadata => {
+      client.rebootNode(metadata.getId())
+    })
   }
 
   // Used to shutdown instances
