@@ -17,7 +17,7 @@ import sbt._
 import Process._
 import Keys._
 import akka.sbt.AkkaKernelPlugin
-import akka.sbt.AkkaKernelPlugin.{ Dist, outputDirectory, distJvmOptions }
+import akka.sbt.AkkaKernelPlugin.{ Dist, outputDirectory, distJvmOptions, configSourceDirs, libFilter }
 
 trait Resolvers {
   val JCloudResolvers = Seq(
@@ -31,7 +31,7 @@ trait Resolvers {
 }
 
 object V {
-  val AKKA = "2.3.3"
+  val AKKA = "2.2.4"
   val CONFIG = "1.2.1"
   val JCLOUDS = "1.7.2"
   val LIFT = "2.5.1"
@@ -93,7 +93,9 @@ object JCloudBuild extends Build with Resolvers with Dependencies {
     javaOptions ++= jvmOptions,
     parallelExecution in Test := false,
     distJvmOptions in Dist := jvmOptions.mkString(" "),
-    outputDirectory in Dist := file("cookbook/jclouds/files/default/jclouds-deploy")
+    outputDirectory in Dist := file("cookbook/jclouds/files/default/jclouds-deploy"),
+    configSourceDirs in Dist := Seq(file("src/main/resources/application.conf")),
+    libFilter in Dist := { f => Seq("akka-.*", "config-.*", "scala-.*").filter(f.name.matches(_)).nonEmpty }
   )
   
   lazy val root = Project(
