@@ -23,18 +23,20 @@ package example
 //  - the 'reboot' method reboots the instance
 //  - and the 'shutdown' method to terminate that instance
 
-class RackspaceProvisioner extends provider.Rackspace.Ubuntu("12.04") {
+object RackspaceProvisioner extends provider.Rackspace.Ubuntu("12.04") {
   template_builder
     .minRam(2048)
 
   chef_runlist
     .addRecipe("java")
+    .addRecipe("cluster")
 }
 
-class AmazonProvisioner extends provider.AwsEc2.Ubuntu("12.04") {
+object AmazonProvisioner extends provider.AwsEc2.Ubuntu("12.04") {
   template_builder
     .minRam(2048)
 
   chef_runlist
     .addRecipe("java")
+    .addRecipe("cluster")
 }

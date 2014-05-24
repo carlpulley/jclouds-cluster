@@ -15,8 +15,8 @@
 
 include_recipe "java"
 
-remote_directory "#{node[:jclouds][:deploy_dir]}/#{node[:jclouds][:service]}" do
-  source "jclouds-deploy"
+remote_directory "#{node[:cluster][:deploy_dir]}/#{node[:cluster][:service]}" do
+  source "cluster-deploy"
   purge true
   owner 'root'
   group 'root'
@@ -26,23 +26,23 @@ end
 
 bash "create-service-log" do
   code <<-EOF
-  touch /var/log/#{node[:jclouds][:service]}.log
-  chown #{node[:jclouds][:uid]}:adm /var/log/#{node[:jclouds][:service]}.log
+  touch /var/log/#{node[:cluster][:service]}.log
+  chown #{node[:cluster][:uid]}:adm /var/log/#{node[:cluster][:service]}.log
   EOF
 end
 
-service node[:jclouds][:service] do
+service node[:cluster][:service] do
   provider Chef::Provider::Service::Upstart
   supports :restart => true, :start => true, :stop => true
 end
 
-template "/etc/init/#{node[:jclouds][:service]}.conf" do
-  source "jclouds.conf.erb"
+template "/etc/init/#{node[:cluster][:service]}.conf" do
+  source "cluster.conf.erb"
   owner 'root'
   group 'root'
   mode 0644
 end
 
-service node[:jclouds][:service] do
+service node[:cluster][:service] do
   action [:enable, :start]
 end

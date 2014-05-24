@@ -13,22 +13,9 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-package cakesolutions
+package cakesolutions.example
 
-package example
-
-// Simply run:
-//  - the 'bootstrap' method to provision a cloud providers Ubuntu instance
-//  - the 'suspend' and 'resume' methods allow the instance to be saved and resumed
-//  - the 'reboot' method reboots the instance
-//  - and the 'shutdown' method to terminate that instance
-
-object RackspaceSlaveNode extends RackspaceProvisioner {
-  chef_runlist
-    .addRecipe("jclouds")
-}
-
-class AmazonSlaveNode extends AmazonProvisioner {
-  chef_runlist
-    .addRecipe("jclouds")
+object ClusterMessages {
+  case class Ping(msg: String, tag: String = "")
+  case class Pong(reply: String)
 }

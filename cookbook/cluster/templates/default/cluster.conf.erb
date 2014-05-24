@@ -1,0 +1,19 @@
+description "Simple Akka Application Daemon: <%= node[:cluster][:service] %>@<%= node[:cluster][:port] %>"
+  
+respawn
+
+expect fork
+
+setuid <%= node[:cluster][:uid] %>
+setgid users
+
+pre-start script
+  exec sh <%= node[:cluster][:deploy_dir] %>/<%= node[:cluster][:service] %>/bin/start '<%= node[:cluster][:boot_class] %>' 2>&1 > /var/log/<%= node[:cluster][:service] %>.log &
+end script
+
+post-start script
+  # wait for listen on port <%= node[:cluster][:port] %>
+  while ! nc -q0 `hostname -i` <%= node[:cluster][:port] %> </dev/null >/dev/null 2>&1; do
+    sleep 1;
+  done
+end script

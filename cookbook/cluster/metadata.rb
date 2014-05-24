@@ -1,7 +1,7 @@
-name              "jclouds"
+name              "cluster"
 maintainer        "Carl Pulley"
 license           "GPL v3"
-description       "Installs a Simple Akka Application"
+description       "Installs an Akka Cluster Node"
 version           "0.1.0"
 
 supports "ubuntu", ">= 10.04"
