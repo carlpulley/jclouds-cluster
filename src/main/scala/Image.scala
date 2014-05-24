@@ -52,6 +52,7 @@ import scala.language.implicitConversions
 trait ClientContextConfig {
   protected[this] val config = ConfigFactory.load("jclouds.conf")
 
+  // Child classes use this property to configure the compute node with login credentials etc.
   protected[this] val client_context: ComputeServiceContext // Usage: 'override lazy val' in children
 }
 
@@ -75,6 +76,7 @@ abstract class Image(val group: String = "jclouds") extends ClientContextConfig 
     .overrides(chef_config)
     .buildView(classOf[ChefContext])
 
+  // Child classes update this property with the Chef receipes that are to be ran
   protected[this] val chef_runlist: RunListBuilder = new RunListBuilder()
   protected[this] val chef_attributes = mutable.Map[String, JObject]()
 
@@ -84,14 +86,17 @@ abstract class Image(val group: String = "jclouds") extends ClientContextConfig 
 
   private[this] val client: ComputeService = client_context.getComputeService()
 
+  // Child classes update this property to configure the compute instance that will be provided
   protected[this] val template_builder: TemplateBuilder = client.templateBuilder()
-    
+  
+  // Child classes use this property to define the compute nodes administrator login name and credentials
   protected[this] val admin: LoginCredentials // Usage: 'override lazy val' in children
 
   protected[this] var node: Option[NodeMetadata] = None // initialised in bootstrap
 
   protected[this] val bootstrap_builder: ImmutableSet.Builder[Statement] = ImmutableSet.builder()
 
+  // Child classes update this property with their port forwarding rules
   protected[this] var ports = mutable.Set[Int]()
 
   // Used to provision, bootstrap and configure a specific provider instance
