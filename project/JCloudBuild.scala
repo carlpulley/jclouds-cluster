@@ -31,7 +31,7 @@ trait Resolvers {
 }
 
 object V {
-  val AKKA = "2.2.4"
+  val AKKA = "2.3.3"
   val CONFIG = "1.2.1"
   val JCLOUDS = "1.7.2"
   val LIFT = "2.5.1"

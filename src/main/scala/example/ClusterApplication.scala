@@ -19,8 +19,9 @@ import akka.actor.ActorSystem
 import akka.actor.AddressFromURIString
 import akka.actor.Deploy
 import akka.actor.Props
-import akka.actor.RemoteScope
 import akka.kernel.Bootable
+import akka.remote.RemoteScope
+import scala.collection.JavaConverters._
 
 class ClusterApplication extends Bootable {
   implicit val system = ActorSystem("JCloudsClustering")
@@ -30,8 +31,8 @@ class ClusterApplication extends Bootable {
   val amazon = AmazonProvisioner.bootstrap
 
   def startup = {
-    val rackspace_address = AddressFromURIString(s"akka.tcp://JCloudsClustering@${rackspace.getPublicAddresses().head}:2552")
-    val amazon_address = AddressFromURIString(s"akka.tcp://JCloudsClustering@${amazon.getPublicAddresses().head}:2552")
+    val rackspace_address = AddressFromURIString(s"akka.tcp://JCloudsClustering@${rackspace.getPublicAddresses().asScala.head}:2552")
+    val amazon_address = AddressFromURIString(s"akka.tcp://JCloudsClustering@${amazon.getPublicAddresses().asScala.head}:2552")
     system.actorOf(Props[ClusterNode].withDeploy(Deploy(scope = RemoteScope(rackspace_address))), name = "rackspace")
     system.actorOf(Props[ClusterNode].withDeploy(Deploy(scope = RemoteScope(amazon_address))), name = "amazon")
   }

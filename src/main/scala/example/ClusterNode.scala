@@ -16,9 +16,11 @@
 package cakesolutions.example
 
 import akka.actor.Actor
+import akka.actor.ActorSystem
 import akka.cluster.Cluster
 import akka.cluster.MemberStatus
 import akka.event.LoggingReceive
+import akka.kernel.Bootable
 import scala.util.Random
 
 class ClusterNode extends Actor {
@@ -35,8 +37,8 @@ class ClusterNode extends Actor {
         sender ! Pong(s"$route says $msg")
       } else {
         // We pass the message onto another (random) node for processing
-        val nodes = cluser.state.members.filter(_.status == MemberStatus.Up)
-        context.actorSelection(nodes(Random.nextInt(nodes.size)).address).tell(Ping(msg, route), sender)
+        val nodes = cluster.state.members.filter(_.status == MemberStatus.Up).toSeq
+        context.actorSelection(nodes(Random.nextInt(nodes.size)).address.toString).tell(Ping(msg, route), sender)
       }
   }
 }
