@@ -15,7 +15,12 @@
 
 package cakesolutions.example
 
+import akka.actor.Address
+
 object ClusterMessages {
   case class Ping(msg: String, tag: String = "")
   case class Pong(reply: String)
+
+  // This message is used to wire nodes to the controller, and so to build our cluster
+  case class Controller(seedNodes: List[Address])
 }

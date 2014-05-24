@@ -15,6 +15,7 @@
 
 package cakesolutions.example
 
+import akka.actor.ActorRef
 import akka.actor.ActorSystem
 import akka.actor.AddressFromURIString
 import akka.actor.Deploy
@@ -24,17 +25,27 @@ import akka.remote.RemoteScope
 import scala.collection.JavaConverters._
 
 class ClusterApplication extends Bootable {
+  import ClusterMessages._
+
   implicit val system = ActorSystem("JCloudsClustering")
 
+  val nodes = Map(
+    "rackspace" -> RackspaceProvisioner.bootstrap,
+    "amazon" -> AmazonProvisioner.bootstrap
+  )
+
+  val addresses = for((label, metadata) <- nodes) yield {
+    val address = AddressFromURIString(s"akka.tcp://JCloudsClustering@${metadata.getPublicAddresses().asScala.head}:2552")
+    system.actorOf(Props[ClusterNode].withDeploy(Deploy(scope = RemoteScope(address))), name = label)
+  }
+
   val controller = system.actorOf(Props[ClusterNode], name = "controller")
-  val rackspace = RackspaceProvisioner.bootstrap
-  val amazon = AmazonProvisioner.bootstrap
 
   def startup = {
-    val rackspace_address = AddressFromURIString(s"akka.tcp://JCloudsClustering@${rackspace.getPublicAddresses().asScala.head}:2552")
-    val amazon_address = AddressFromURIString(s"akka.tcp://JCloudsClustering@${amazon.getPublicAddresses().asScala.head}:2552")
-    system.actorOf(Props[ClusterNode].withDeploy(Deploy(scope = RemoteScope(rackspace_address))), name = "rackspace")
-    system.actorOf(Props[ClusterNode].withDeploy(Deploy(scope = RemoteScope(amazon_address))), name = "amazon")
+    // Wire up and build our cluster
+    for (node <- addresses.toSeq :+ controller) {
+      node ! Controller(List(controller.path.address))
+    }
   }
 
   def shutdown = {

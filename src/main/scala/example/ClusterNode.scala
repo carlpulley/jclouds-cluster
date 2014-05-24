@@ -21,14 +21,29 @@ import akka.cluster.Cluster
 import akka.cluster.MemberStatus
 import akka.event.LoggingReceive
 import akka.kernel.Bootable
+import ClusterMessages._
 import scala.util.Random
 
-class ClusterNode extends Actor {
-  import ClusterMessages._
+trait ClusterConfig {
+  this: Actor =>
 
   val cluster = Cluster(context.system)
+}
+
+trait ClusterWiring {
+  this: Actor with ClusterConfig =>
+
+  def running: Receive
 
   def receive = LoggingReceive {
+    case Controller(seedNodes) =>
+      cluster.joinSeedNodes(seedNodes)
+      context.become(running)
+  }
+}
+
+class ClusterNode extends Actor with ClusterWiring with ClusterConfig {
+  def running: Receive = LoggingReceive {
     case Ping(msg, tag) =>
       val route = s"$tag-${self.path.name}"
 
