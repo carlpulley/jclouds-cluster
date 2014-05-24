@@ -37,6 +37,7 @@ import org.jclouds.compute.domain.NodeMetadata
 import org.jclouds.compute.domain.NodeMetadataBuilder
 import org.jclouds.compute.domain.TemplateBuilder
 import org.jclouds.compute.options.RunScriptOptions.Builder.overrideLoginCredentials
+import org.jclouds.compute.options.RunScriptOptions.Builder.runAsRoot
 import org.jclouds.ContextBuilder
 import org.jclouds.domain.JsonBall
 import org.jclouds.domain.LoginCredentials
@@ -108,28 +109,35 @@ abstract class Image(val group: String = "jclouds") extends ClientContextConfig 
   }
 
   // Used to suspend/save this machine instance (not supported by all providers)
-  def suspend() {
+  def suspend(): Unit = {
     node.map( metadata => {
       client.suspendNode(metadata.getId())
     })
   }
 
   // Used to resume a suspended machine instance (not supported by all providers)
-  def resume() {
+  def resume(): Unit = {
     node.map( metadata => {
       client.resumeNode(metadata.getId())
     })
   }
 
+  // Run an arbitrary command as root
+  def runScript(script: String): Unit = {
+    node.map( metadata => {
+      client.runScriptOnNode(metadata.getId(), script, runAsRoot(true))
+    })
+  }
+
   // Used to reboot the instance
-  def reboot() {
+  def reboot(): Unit = {
     node.map( metadata => {
       client.rebootNode(metadata.getId())
     })
   }
 
   // Used to shutdown instances
-  def shutdown() {
+  def shutdown(): Unit = {
     node.map( metadata => {
       val chef_service = chef_context.getChefService()
       val ipaddr = metadata.getPrivateAddresses().head
