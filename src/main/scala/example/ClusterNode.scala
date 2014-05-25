@@ -22,6 +22,7 @@ import akka.cluster.MemberStatus
 import akka.event.LoggingReceive
 import akka.kernel.Bootable
 import ClusterMessages._
+import com.typesafe.config.ConfigFactory
 import scala.util.Random
 
 trait ClusterConfig {
@@ -59,7 +60,9 @@ class ClusterNode extends Actor with ClusterWiring with ClusterConfig {
 }
 
 class ClusterNodeApplication extends Bootable {
-  implicit val system = ActorSystem("JCloudsClustering")
+  val config = ConfigFactory.load()
+
+  implicit val system = ActorSystem(config.getString("akka.system"))
 
   def startup = {
     // We simply listen for remote actor creation events by default here

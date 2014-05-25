@@ -15,34 +15,38 @@
 
 package cakesolutions.example
 
-import akka.actor.ActorRef
 import akka.actor.ActorSystem
 import akka.actor.AddressFromURIString
 import akka.actor.Deploy
 import akka.actor.Props
-import akka.kernel.Bootable
 import akka.remote.RemoteScope
+import com.typesafe.config.ConfigFactory
 import scala.collection.JavaConverters._
 
-class ClusterApplication extends Bootable {
+object ClusterApplication {
   import ClusterMessages._
 
-  implicit val system = ActorSystem("JCloudsClustering")
+  val config = ConfigFactory.load()
+  
+  val systemName = config.getString("akka.system")
+
+  implicit val system = ActorSystem(systemName)
 
   val nodes = Map(
-    "rackspace" -> RackspaceProvisioner.bootstrap,
-    "amazon" -> AmazonProvisioner.bootstrap
+    "red" -> config.getInt("node.red.port"),
+    "green" -> config.getInt("node.green.port"),
+    "blue" -> config.getInt("node.blue.port")
   )
-
-  val addresses = for((label, metadata) <- nodes) yield {
-    val address = AddressFromURIString(s"akka.tcp://JCloudsClustering@${metadata.getPublicAddresses().asScala.head}:2552")
-    system.actorOf(Props[ClusterNode].withDeploy(Deploy(scope = RemoteScope(address))), name = label)
-  }
-
-  val controller = system.actorOf(Props[ClusterNode], name = "controller")
 
   def startup = {
     // Wire up and build our cluster
+    val addresses = for((label, port) <- nodes) yield {
+      val address = AddressFromURIString(s"akka.tcp://${systemName}@127.0.0.1:${port}")
+      system.actorOf(Props[ClusterNode].withDeploy(Deploy(scope = RemoteScope(address))), name = label)
+    }
+  
+    val controller = system.actorOf(Props[ClusterNode], name = "controller")
+
     for (node <- addresses.toSeq :+ controller) {
       node ! Controller(List(controller.path.address))
     }
@@ -50,7 +54,5 @@ class ClusterApplication extends Bootable {
 
   def shutdown = {
     system.shutdown
-    RackspaceProvisioner.shutdown
-    AmazonProvisioner.shutdown
   }
 }
