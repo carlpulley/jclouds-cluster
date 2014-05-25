@@ -17,9 +17,9 @@ package cakesolutions.example
 
 import akka.actor.Actor
 import akka.actor.ActorSystem
+import akka.actor.Address
 import akka.cluster.Cluster
 import akka.cluster.MemberStatus
-import akka.event.LoggingReceive
 import akka.kernel.Bootable
 import ClusterMessages._
 import com.typesafe.config.ConfigFactory
@@ -36,25 +36,22 @@ trait ClusterWiring {
 
   def running: Receive
 
-  def receive = LoggingReceive {
-    case Controller(seedNodes) =>
-      cluster.joinSeedNodes(seedNodes)
+  def receive: Receive = {
+    case Controller(seedNode) =>
+      cluster.join(seedNode)
       context.become(running)
   }
 }
 
 class ClusterNode extends Actor with ClusterWiring with ClusterConfig {
-  def running: Receive = LoggingReceive {
+  def running: Receive = {
     case Ping(msg, tag) =>
       val route = s"$tag-${self.path.name}"
 
-      if (Random.nextBoolean) {
-        // We process the message...
+      if (Random.nextInt(4) == 1) {
         sender ! Pong(s"$route says $msg")
       } else {
-        // We pass the message onto another (random) node for processing
-        val nodes = cluster.state.members.filter(_.status == MemberStatus.Up).toSeq
-        context.actorSelection(nodes(Random.nextInt(nodes.size)).address.toString).tell(Ping(msg, route), sender)
+        sender ! Ping(msg, route)
       }
   }
 }

@@ -15,13 +15,16 @@
 
 package cakesolutions.example
 
+import akka.actor.ActorDSL._
+import akka.actor.ActorLogging
 import akka.actor.ActorSystem
 import akka.actor.AddressFromURIString
 import akka.actor.Deploy
 import akka.actor.Props
+import akka.cluster.Cluster
 import akka.remote.RemoteScope
 import com.typesafe.config.ConfigFactory
-import scala.collection.JavaConverters._
+import scala.util.Random
 
 object ClusterApplication {
   import ClusterMessages._
@@ -38,21 +41,38 @@ object ClusterApplication {
     "blue" -> config.getInt("node.blue.port")
   )
 
+  val addresses = for((label, port) <- nodes) yield {
+    val address = AddressFromURIString(s"akka.tcp://${systemName}@127.0.0.1:${port}")
+    system.actorOf(Props[ClusterNode].withDeploy(Deploy(scope = RemoteScope(address))), name = label)
+  }
+
+  // Ideally, we should subscribe to cluster MemberEvent's here - i.e. maintain valid member up status
+  val source = actor(new Act with ActorLogging {
+    become {
+      case msg @ Ping(_, _) =>
+        assert(addresses.nonEmpty)
+
+        addresses.toList(Random.nextInt(addresses.size)) ! msg
+
+      case Pong(msg) =>
+        log.info(msg)
+    }
+  })
+
+  def ping(msg: String): Unit = {
+    source ! Ping(msg)
+  }
+
   def startup = {
     // Wire up and build our cluster
-    val addresses = for((label, port) <- nodes) yield {
-      val address = AddressFromURIString(s"akka.tcp://${systemName}@127.0.0.1:${port}")
-      system.actorOf(Props[ClusterNode].withDeploy(Deploy(scope = RemoteScope(address))), name = label)
-    }
-  
-    val controller = system.actorOf(Props[ClusterNode], name = "controller")
-
-    for (node <- addresses.toSeq :+ controller) {
-      node ! Controller(List(controller.path.address))
+    val joinAddress = AddressFromURIString(s"akka.tcp://${systemName}@127.0.0.1:${nodes.values.head}")
+    for (node <- addresses) {
+      node ! Controller(joinAddress)
     }
   }
 
   def shutdown = {
+    // Other cluster JVMs should (hopefully) be killed off by our wrapper script!!
     system.shutdown
   }
 }
