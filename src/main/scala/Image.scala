@@ -92,7 +92,7 @@ abstract class Image(val group: String = "jclouds") extends ClientContextConfig 
   // Child classes use this property to define the compute nodes administrator login name and credentials
   protected[this] val admin: LoginCredentials // Usage: 'override lazy val' in children
 
-  protected[this] var node: Option[NodeMetadata] = None // initialised in bootstrap
+  protected[this] var node: Option[NodeMetadata] = None // modified by bootstrap and shutdown
 
   protected[this] val bootstrap_builder: ImmutableSet.Builder[Statement] = ImmutableSet.builder()
 
@@ -160,5 +160,6 @@ abstract class Image(val group: String = "jclouds") extends ClientContextConfig 
       }
       client.destroyNode(metadata.getId())
     })
+    node = None
   }
 }

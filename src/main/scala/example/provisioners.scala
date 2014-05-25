@@ -19,7 +19,7 @@ package example
 
 // Simply run:
 //  - the 'bootstrap' method to provision a cloud providers Ubuntu instance
-//  - the 'suspend' and 'resume' methods allow the instance to be saved and resumed
+//  - the 'suspend' and 'resume' methods allow the instance to be saved and resumed (provider dependent)
 //  - the 'reboot' method reboots the instance
 //  - and the 'shutdown' method to terminate that instance
 
@@ -30,6 +30,8 @@ object RackspaceProvisioner extends provider.Rackspace.Ubuntu("12.04") {
   chef_runlist
     .addRecipe("java")
     .addRecipe("cluster")
+
+  ports += 2552
 }
 
 object AmazonProvisioner extends provider.AwsEc2.Ubuntu("12.04") {
@@ -39,4 +41,6 @@ object AmazonProvisioner extends provider.AwsEc2.Ubuntu("12.04") {
   chef_runlist
     .addRecipe("java")
     .addRecipe("cluster")
+
+  ports += 2552
 }

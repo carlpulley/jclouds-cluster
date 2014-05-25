@@ -15,6 +15,10 @@
 
 include_recipe "java"
 
+user node[:cluster][:uid] do
+  action :create
+end
+
 remote_directory "#{node[:cluster][:deploy_dir]}/#{node[:cluster][:service]}" do
   source "cluster-deploy"
   purge true

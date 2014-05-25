@@ -17,7 +17,7 @@ import sbt._
 import Process._
 import Keys._
 import akka.sbt.AkkaKernelPlugin
-import akka.sbt.AkkaKernelPlugin.{ Dist, outputDirectory, distJvmOptions, configSourceDirs, libFilter }
+import akka.sbt.AkkaKernelPlugin.{ Dist, outputDirectory, distJvmOptions, configSourceDirs }
 
 trait Resolvers {
   val JCloudResolvers = Seq(
@@ -35,9 +35,11 @@ object V {
   val CONFIG = "1.2.1"
   val JCLOUDS = "1.7.2"
   val LIFT = "2.5.1"
+  val LOG4J = "1.2.17"
   val SCALA = "2.10.2"
   val SCALACHECK = "1.11.4"
   val SCALATEST = "2.1.7"
+  val SLF4J = "1.7.5"
 }
 
 trait Dependencies {
@@ -65,7 +67,10 @@ trait Dependencies {
     "org.apache.jclouds.driver" % "jclouds-sshj" % V.JCLOUDS,
     // Needed due to "issues"
     "com.google.code.findbugs" % "jsr305" % "1.3.9",
-    "org.eclipse.jetty.orbit" % "javax.servlet" % "3.0.0.v201112011016" artifacts (Artifact("javax.servlet", "jar", "jar"))
+    "org.eclipse.jetty.orbit" % "javax.servlet" % "3.0.0.v201112011016" artifacts (Artifact("javax.servlet", "jar", "jar")),
+    // JClouds Logging
+    "org.slf4j" % "slf4j-log4j12" % V.SLF4J,
+    "log4j" % "log4j" % V.LOG4J
   )
 
   val Miscellaneous = Seq(
@@ -94,8 +99,7 @@ object JCloudBuild extends Build with Resolvers with Dependencies {
     parallelExecution in Test := false,
     distJvmOptions in Dist := jvmOptions.mkString(" "),
     outputDirectory in Dist := file("cookbook/cluster/files/default/cluster-deploy"),
-    configSourceDirs in Dist := Seq(file("src/main/resources")),
-    libFilter in Dist := { f => Seq("akka-.*", "config-.*", "scala-.*").filter(f.name.matches(_)).nonEmpty }
+    configSourceDirs in Dist := Seq(file("src/main/resources"))
   )
   
   lazy val root = Project(
