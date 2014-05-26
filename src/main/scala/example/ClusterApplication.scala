@@ -49,9 +49,7 @@ class ClusterApplication(nodes: Map[String, Int]) {
 
   val client = actor(new Act with ActorLogging {
     become {
-      case msg @ Ping(_, _) =>
-        assert(addresses.nonEmpty)
-  
+      case msg @ Ping(_, _) if (addresses.nonEmpty) =>
         addresses.values.toList(Random.nextInt(addresses.size)) ! msg
   
       case Pong(msg) =>
