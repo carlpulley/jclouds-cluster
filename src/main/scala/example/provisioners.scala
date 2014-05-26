@@ -38,8 +38,7 @@ class RackspaceProvisioner(role: String, seedNode: Address) extends provider.Rac
     .addRecipe("java")
     .addRecipe("cluster")
 
-  chef_attributes += ("cluster" -> ("role" -> role))
-  chef_attributes += ("cluster" -> ("seedNode" -> seedNode.toString))
+  chef_attributes += ("cluster" -> ("role" -> role) ~ ("seedNode" -> seedNode.toString))
 
   ports += 2552
 }
@@ -52,8 +51,7 @@ class AmazonProvisioner(role: String, seedNode: Address) extends provider.AwsEc2
     .addRecipe("java")
     .addRecipe("cluster")
 
-  chef_attributes += ("cluster" -> ("role" -> role))
-  chef_attributes += ("cluster" -> ("seedNode" -> seedNode.toString))
+  chef_attributes += ("cluster" -> ("role" -> role) ~ ("seedNode" -> seedNode.toString))
 
   ports += 2552
 }
