@@ -26,7 +26,9 @@ import akka.actor.AddressFromURIString
 import akka.actor.Deploy
 import akka.actor.Props
 import akka.cluster.Cluster
+import akka.cluster.ClusterEvent.CurrentClusterState
 import akka.cluster.ClusterEvent.MemberUp
+import akka.cluster.MemberStatus
 import akka.remote.RemoteScope
 import com.typesafe.config.ConfigFactory
 import org.jclouds.compute.domain.NodeMetadata
@@ -58,6 +60,10 @@ class ClusterApplication(supplier: Provisioner, nodes: Set[String]) {
       case Pong(msg) =>
         log.info(msg)
   
+      case state: CurrentClusterState =>
+        // For demo purposes, log currently known up members
+        log.info(state.members.filter(_.status == MemberStatus.Up).toString)
+
       case MemberUp(member) if (member.roles.nonEmpty) =>
         // Convention: (head) role is used to label the nodes (single) actor
         val node = member.address
