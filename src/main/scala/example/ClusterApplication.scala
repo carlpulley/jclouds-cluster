@@ -19,11 +19,12 @@ import akka.actor.ActorDSL._
 import akka.actor.ActorLogging
 import akka.actor.ActorRef
 import akka.actor.ActorSystem
+import akka.actor.Address
 import akka.actor.AddressFromURIString
 import akka.actor.Deploy
 import akka.actor.Props
 import akka.cluster.Cluster
-import akka.cluster.MemberStatus
+import akka.cluster.ClusterEvent.MemberUp
 import akka.remote.RemoteScope
 import com.typesafe.config.ConfigFactory
 import scala.sys.process._
@@ -43,37 +44,62 @@ class ClusterApplication(nodes: Map[String, Int]) {
   // We first ensure that we've joined our cluster!
   cluster.join(joinAddress)
 
-  // Here we shell-out to provision out cluster nodes
-  val processes = for((label, port) <- nodes) yield {
-    val AKKA_HOME = "pwd".!!.stripLineEnd + "/target/dist"
-    val jarFiles = s"ls $AKKA_HOME/lib/".!!.split("\n").map(AKKA_HOME + "/lib/" + _).mkString(":")
+  var processes = Set.empty[Process]
+  var addresses = Map.empty[Address, ActorRef]
+  var client = Option.empty[ActorRef]
 
-    Process(s"""java -Xms256M -Xmx1024M -XX:+UseParallelGC -classpath "$AKKA_HOME/config:$jarFiles" -Dakka.home=$AKKA_HOME -Dakka.remote.netty.tcp.port=$port akka.kernel.Main cakesolutions.example.ClusterNodeApplication""").run
+  for((label, port) <- nodes) {
+    provisionNode(label, port)
+  }
+
+  // Here we shell-out to provision out cluster nodes
+  def provisionNode(label: String, port: Int): Unit = {
+    val AKKA_HOME = "pwd".!!.stripLineEnd + "/target/dist"
+    val jarFiles = s"ls ${AKKA_HOME}/lib/".!!.split("\n").map(AKKA_HOME + "/lib/" + _).mkString(":")
+    val proc = Process(s"""java -Xms256M -Xmx1024M -XX:+UseParallelGC -classpath "${AKKA_HOME}/config:${jarFiles}" -Dakka.home=${AKKA_HOME} -Dakka.remote.netty.tcp.port=${port} -Dakka.cluster.roles.1=${label} akka.kernel.Main cakesolutions.example.ClusterNodeApplication""").run
+
+    processes = processes + proc
+  }
+
+  def bootstrapNode(label: String, port: Int): Unit = {
+    bootstrapNode(label, AddressFromURIString(s"akka.tcp://${systemName}@127.0.0.1:${port}"))
+  }
+
+  private def bootstrapNode(label: String, node: Address): Unit = {
+    val act = system.actorOf(Props[ClusterNode].withDeploy(Deploy(scope = RemoteScope(node))), name = label)
+
+    addresses = addresses + (node -> act)
+    act ! Client(joinAddress)
   }
 
   def startup: ActorRef = {
-    // Wire up and build our cluster
-    val addresses = for((label, port) <- nodes) yield {
-      val address = AddressFromURIString(s"akka.tcp://${systemName}@127.0.0.1:${port}")
-      system.actorOf(Props[ClusterNode].withDeploy(Deploy(scope = RemoteScope(address))), name = label)
-    }
-  
-    for (node <- addresses) {
-      node ! Client(joinAddress)
-    }
-  
-    // Ideally, we should subscribe to cluster MemberEvent's here - i.e. maintain valid member up status
-    actor(new Act with ActorLogging {
-      become {
-        case msg @ Ping(_, _) =>
-          assert(addresses.nonEmpty)
-  
-          addresses.toList(Random.nextInt(addresses.size)) ! msg
-  
-        case Pong(msg) =>
-          log.info(msg)
+    if (addresses.isEmpty) {
+      // Wire up and build our cluster
+      for((label, port) <- nodes) {
+        bootstrapNode(label, port)
       }
-    })
+    
+      client = Some(actor(new Act with ActorLogging {
+        become {
+          case msg @ Ping(_, _) =>
+            assert(addresses.nonEmpty)
+    
+            addresses.values.toList(Random.nextInt(addresses.size)) ! msg
+    
+          case Pong(msg) =>
+            log.info(msg)
+  
+          case MemberUp(member) if (! addresses.keySet.contains(member.address)) =>
+            // Convention: role is used to label the nodes (single) actor
+            bootstrapNode(member.roles.head, member.address)
+        }
+      }))
+
+      // Ensure client is subscribed for member up events (i.e. allow introduction of new nodes for pinging)
+      cluster.subscribe(client.get, classOf[MemberUp])
+    }
+
+    client.get
   }
 
   def shutdown = {
