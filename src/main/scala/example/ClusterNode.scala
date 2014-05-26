@@ -24,8 +24,6 @@ import com.typesafe.config.ConfigFactory
 import scala.util.Random
 
 class ClusterNode extends Actor {
-  val cluster = Cluster(context.system)
-
   def receive: Receive = {
     case Ping(msg, tag) =>
       val route = s"$tag-${self.path.name}"
@@ -42,6 +40,8 @@ class ClusterNodeApplication extends Bootable {
   val config = ConfigFactory.load()
 
   implicit val system = ActorSystem(config.getString("akka.system"))
+
+  val cluster = Cluster(system)
 
   def startup = {
     // We simply listen for remote actor creation events by default here
