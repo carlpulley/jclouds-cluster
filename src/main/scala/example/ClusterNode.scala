@@ -17,9 +17,7 @@ package cakesolutions.example
 
 import akka.actor.Actor
 import akka.actor.ActorSystem
-import akka.actor.Address
 import akka.cluster.Cluster
-import akka.cluster.MemberStatus
 import akka.kernel.Bootable
 import ClusterMessages._
 import com.typesafe.config.ConfigFactory
@@ -37,7 +35,7 @@ trait ClusterWiring {
   def running: Receive
 
   def receive: Receive = {
-    case Controller(seedNode) =>
+    case Client(seedNode) =>
       cluster.join(seedNode)
       context.become(running)
   }

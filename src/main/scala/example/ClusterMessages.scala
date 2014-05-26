@@ -21,6 +21,6 @@ object ClusterMessages {
   case class Ping(msg: String, tag: String = "")
   case class Pong(reply: String)
 
-  // This message is used to wire nodes to the controller, and so to build our JVM cluster
-  case class Controller(seedNodes: Address)
+  // This message is used to wire nodes to the cluster's client/controller, and so to build our JVM cluster
+  case class Client(addr: Address)
 }

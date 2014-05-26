@@ -99,7 +99,8 @@ object JCloudBuild extends Build with Resolvers with Dependencies {
     parallelExecution in Test := false,
     distJvmOptions in Dist := jvmOptions.mkString(" "),
     configSourceDirs in Dist := Seq(file("src/main/resources")),
-    initialCommands in console := """import cakesolutions.example._; import cakesolutions.example.ClusterMessages._; import ClusterApplication._; startup"""
+    fork in console := true,
+    initialCommands in console := """import cakesolutions.example._; import cakesolutions.example.ClusterMessages._"""
   )
   
   lazy val root = Project(
