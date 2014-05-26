@@ -98,8 +98,8 @@ object JCloudBuild extends Build with Resolvers with Dependencies {
     javaOptions ++= jvmOptions,
     parallelExecution in Test := false,
     distJvmOptions in Dist := jvmOptions.mkString(" "),
+    outputDirectory in Dist := file("cookbook/cluster/files/default/cluster-deploy"),
     configSourceDirs in Dist := Seq(file("src/main/resources")),
-    fork in console := true,
     initialCommands in console := "import cakesolutions.example._; import cakesolutions.example.ClusterMessages._"
   )
   

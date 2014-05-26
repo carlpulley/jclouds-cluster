@@ -1,4 +1,4 @@
-// Copyright (C) 2014  Carl Pulley
+// Copyright (C) 2013  Carl Pulley
 // 
 // This program is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -13,11 +13,21 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-package cakesolutions.example
+package cakesolutions
 
-import akka.actor.Address
+package image
 
-object ClusterMessages {
-  case class Ping(msg: String, tag: String = "")
-  case class Pong(reply: String)
+import org.jclouds.compute.domain.OsFamily
+
+// Basic Ubuntu instance that we wish to provision (here we are cloud infrastructure agnostic)
+abstract class Ubuntu(version: String) extends Image {
+  template_builder
+    .osFamily(OsFamily.UBUNTU)
+    .osVersionMatches(version)
+    .smallest()
+
+  ports += 22 // SSH
+
+  chef_runlist
+    .addRecipe("apt")
 }

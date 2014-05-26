@@ -13,7 +13,9 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-package cakesolutions.example
+package cakesolutions
+
+package example
 
 import akka.actor.ActorDSL._
 import akka.actor.ActorLogging
@@ -27,10 +29,11 @@ import akka.cluster.Cluster
 import akka.cluster.ClusterEvent.MemberUp
 import akka.remote.RemoteScope
 import com.typesafe.config.ConfigFactory
+import org.jclouds.compute.domain.NodeMetadata
 import scala.sys.process._
 import scala.util.Random
 
-class ClusterApplication(nodes: Map[String, Int]) {
+class ClusterApplication(supplier: Provisioner, nodes: Set[String]) {
   import ClusterMessages._
 
   val config = ConfigFactory.load()
@@ -44,7 +47,7 @@ class ClusterApplication(nodes: Map[String, Int]) {
   // We first ensure that we've joined our cluster!
   cluster.join(joinAddress)
 
-  var processes = Set.empty[Process]
+  var machines = Map.empty[Image, NodeMetadata]
   var addresses = Map.empty[Address, ActorRef]
 
   val client = actor(new Act with ActorLogging {
@@ -70,22 +73,26 @@ class ClusterApplication(nodes: Map[String, Int]) {
   cluster.subscribe(client, classOf[MemberUp])
 
   // Finally, provision our required nodes
-  for((label, port) <- nodes) {
-    provisionNode(label, port)
+  for(label <- nodes) {
+    provisionNode(label)
   }
 
-  // Here we shell-out to provision out cluster nodes
-  def provisionNode(label: String, port: Int): Unit = {
-    val AKKA_HOME = "pwd".!!.stripLineEnd + "/target/dist"
-    val jarFiles = s"ls ${AKKA_HOME}/lib/".!!.split("\n").map(AKKA_HOME + "/lib/" + _).mkString(":")
-    val proc = Process(s"""java -Xms256M -Xmx1024M -XX:+UseParallelGC -classpath "${AKKA_HOME}/config:${jarFiles}" -Dakka.home=${AKKA_HOME} -Dakka.remote.netty.tcp.port=${port} -Dakka.cluster.roles.1=${label} -Dakka.cluster.seed-nodes.1=${joinAddress} akka.kernel.Main cakesolutions.example.ClusterNodeApplication""").run
-
-    processes = processes + proc
+  // Here we provision our cluster nodes
+  def provisionNode(label: String): Unit = {
+    val node = supplier match {
+      case Rackspace =>
+        new RackspaceProvisioner(label, joinAddress)
+      case Amazon =>
+        new AmazonProvisioner(label, joinAddress)
+    }
+    val metadata = node.bootstrap
+    
+    machines = machines + (node -> metadata)
   }
 
   def shutdown = {
-    for(proc <- processes) {
-      proc.destroy
+    for((node, metadata) <- machines) {
+      node.shutdown
     }
     system.shutdown
   }

@@ -28,6 +28,13 @@ remote_directory "#{node[:cluster][:deploy_dir]}/#{node[:cluster][:service]}" do
   files_mode 0644
 end
 
+template "#{node[:cluster][:deploy_dir]}/#{node[:cluster][:service]}/bin/start" do
+  source "start.erb"
+  owner 'root'
+  group 'root'
+  mode 0644
+end
+
 bash "create-service-log" do
   code <<-EOF
   touch /var/log/#{node[:cluster][:service]}.log
