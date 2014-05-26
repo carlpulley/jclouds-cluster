@@ -46,8 +46,30 @@ class ClusterApplication(nodes: Map[String, Int]) {
 
   var processes = Set.empty[Process]
   var addresses = Map.empty[Address, ActorRef]
-  var client = Option.empty[ActorRef]
 
+  val client = actor(new Act with ActorLogging {
+    become {
+      case msg @ Ping(_, _) =>
+        assert(addresses.nonEmpty)
+  
+        addresses.values.toList(Random.nextInt(addresses.size)) ! msg
+  
+      case Pong(msg) =>
+        log.info(msg)
+  
+      case MemberUp(member) if (member.roles.nonEmpty) =>
+        // Convention: (head) role is used to label the nodes (single) actor
+        val node = member.address
+        val act = system.actorOf(Props[ClusterNode].withDeploy(Deploy(scope = RemoteScope(node))), name = member.roles.head)
+    
+        addresses = addresses + (node -> act)
+    }
+  })
+
+  // Ensure client is subscribed for member up events (i.e. allow introduction of new nodes for pinging)
+  cluster.subscribe(client, classOf[MemberUp])
+
+  // Finally, provision our required nodes
   for((label, port) <- nodes) {
     provisionNode(label, port)
   }
@@ -56,50 +78,9 @@ class ClusterApplication(nodes: Map[String, Int]) {
   def provisionNode(label: String, port: Int): Unit = {
     val AKKA_HOME = "pwd".!!.stripLineEnd + "/target/dist"
     val jarFiles = s"ls ${AKKA_HOME}/lib/".!!.split("\n").map(AKKA_HOME + "/lib/" + _).mkString(":")
-    val proc = Process(s"""java -Xms256M -Xmx1024M -XX:+UseParallelGC -classpath "${AKKA_HOME}/config:${jarFiles}" -Dakka.home=${AKKA_HOME} -Dakka.remote.netty.tcp.port=${port} -Dakka.cluster.roles.1=${label} akka.kernel.Main cakesolutions.example.ClusterNodeApplication""").run
+    val proc = Process(s"""java -Xms256M -Xmx1024M -XX:+UseParallelGC -classpath "${AKKA_HOME}/config:${jarFiles}" -Dakka.home=${AKKA_HOME} -Dakka.remote.netty.tcp.port=${port} -Dakka.cluster.roles.1=${label} -Dakka.cluster.seed-nodes.1=${joinAddress} akka.kernel.Main cakesolutions.example.ClusterNodeApplication""").run
 
     processes = processes + proc
-  }
-
-  def bootstrapNode(label: String, port: Int): Unit = {
-    bootstrapNode(label, AddressFromURIString(s"akka.tcp://${systemName}@127.0.0.1:${port}"))
-  }
-
-  private def bootstrapNode(label: String, node: Address): Unit = {
-    val act = system.actorOf(Props[ClusterNode].withDeploy(Deploy(scope = RemoteScope(node))), name = label)
-
-    addresses = addresses + (node -> act)
-    act ! Client(joinAddress)
-  }
-
-  def startup: ActorRef = {
-    if (addresses.isEmpty) {
-      // Wire up and build our cluster
-      for((label, port) <- nodes) {
-        bootstrapNode(label, port)
-      }
-    
-      client = Some(actor(new Act with ActorLogging {
-        become {
-          case msg @ Ping(_, _) =>
-            assert(addresses.nonEmpty)
-    
-            addresses.values.toList(Random.nextInt(addresses.size)) ! msg
-    
-          case Pong(msg) =>
-            log.info(msg)
-  
-          case MemberUp(member) if (! addresses.keySet.contains(member.address)) =>
-            // Convention: role is used to label the nodes (single) actor
-            bootstrapNode(member.roles.head, member.address)
-        }
-      }))
-
-      // Ensure client is subscribed for member up events (i.e. allow introduction of new nodes for pinging)
-      cluster.subscribe(client.get, classOf[MemberUp])
-    }
-
-    client.get
   }
 
   def shutdown = {

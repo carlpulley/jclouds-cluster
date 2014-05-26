@@ -23,26 +23,10 @@ import ClusterMessages._
 import com.typesafe.config.ConfigFactory
 import scala.util.Random
 
-trait ClusterConfig {
-  this: Actor =>
-
+class ClusterNode extends Actor {
   val cluster = Cluster(context.system)
-}
-
-trait ClusterWiring {
-  this: Actor with ClusterConfig =>
-
-  def running: Receive
 
   def receive: Receive = {
-    case Client(seedNode) =>
-      cluster.join(seedNode)
-      context.become(running)
-  }
-}
-
-class ClusterNode extends Actor with ClusterWiring with ClusterConfig {
-  def running: Receive = {
     case Ping(msg, tag) =>
       val route = s"$tag-${self.path.name}"
 

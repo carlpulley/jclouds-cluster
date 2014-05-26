@@ -100,7 +100,7 @@ object JCloudBuild extends Build with Resolvers with Dependencies {
     distJvmOptions in Dist := jvmOptions.mkString(" "),
     configSourceDirs in Dist := Seq(file("src/main/resources")),
     fork in console := true,
-    initialCommands in console := """import cakesolutions.example._; import cakesolutions.example.ClusterMessages._; import akka.actor.AddressFromURIString"""
+    initialCommands in console := "import cakesolutions.example._; import cakesolutions.example.ClusterMessages._"
   )
   
   lazy val root = Project(
