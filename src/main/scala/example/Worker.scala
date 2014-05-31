@@ -23,7 +23,7 @@ import ClusterMessages._
 import com.typesafe.config.ConfigFactory
 import scala.util.Random
 
-class ClusterNode extends Actor {
+class WorkerActor extends Actor {
   def receive: Receive = {
     case Ping(msg, tag) =>
       val route = s"$tag-${self.path.name}"
@@ -36,7 +36,7 @@ class ClusterNode extends Actor {
   }
 }
 
-class ClusterNodeApplication extends Bootable {
+class WorkerNode extends Bootable {
   val config = ConfigFactory.load()
 
   implicit val system = ActorSystem(config.getString("akka.system"))

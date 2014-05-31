@@ -32,7 +32,7 @@ import com.typesafe.config.ConfigFactory
 import scala.sys.process._
 import scala.util.Random
 
-class ClusterApplication(nodes: Map[String, Int]) {
+class ClientNode(nodes: Map[String, Int]) {
   import ClusterMessages._
 
   val config = ConfigFactory.load()
@@ -64,7 +64,7 @@ class ClusterApplication(nodes: Map[String, Int]) {
       case MemberUp(member) if (member.roles.nonEmpty) =>
         // Convention: (head) role is used to label the nodes (single) actor
         val node = member.address
-        val act = system.actorOf(Props[ClusterNode].withDeploy(Deploy(scope = RemoteScope(node))), name = member.roles.head)
+        val act = system.actorOf(Props[WorkerActor].withDeploy(Deploy(scope = RemoteScope(node))), name = member.roles.head)
     
         addresses = addresses + (node -> act)
     }
@@ -82,7 +82,7 @@ class ClusterApplication(nodes: Map[String, Int]) {
   def provisionNode(label: String, port: Int): Unit = {
     val AKKA_HOME = "pwd".!!.stripLineEnd + "/target/dist"
     val jarFiles = s"ls ${AKKA_HOME}/lib/".!!.split("\n").map(AKKA_HOME + "/lib/" + _).mkString(":")
-    val proc = Process(s"""java -Xms256M -Xmx1024M -XX:+UseParallelGC -classpath "${AKKA_HOME}/config:${jarFiles}" -Dakka.home=${AKKA_HOME} -Dakka.remote.netty.tcp.port=${port} -Dakka.cluster.roles.1=${label} -Dakka.cluster.seed-nodes.1=${joinAddress} akka.kernel.Main cakesolutions.example.ClusterNodeApplication""").run
+    val proc = Process(s"""java -Xms256M -Xmx1024M -XX:+UseParallelGC -classpath "${AKKA_HOME}/config:${jarFiles}" -Dakka.home=${AKKA_HOME} -Dakka.remote.netty.tcp.port=${port} -Dakka.cluster.roles.1=${label} -Dakka.cluster.seed-nodes.1=${joinAddress} akka.kernel.Main cakesolutions.example.WorkerNode""").run
 
     processes = processes + proc
   }
