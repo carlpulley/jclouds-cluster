@@ -32,7 +32,7 @@ import com.typesafe.config.ConfigFactory
 import scala.sys.process._
 import scala.util.Random
 
-class ClientNode(nodes: Map[String, Int]) {
+trait Client[Label] {
   import ClusterMessages._
 
   val config = ConfigFactory.load()
@@ -46,7 +46,6 @@ class ClientNode(nodes: Map[String, Int]) {
   // We first ensure that we've joined our cluster!
   cluster.join(joinAddress)
 
-  var processes = Set.empty[Process]
   var addresses = Map.empty[Address, ActorRef]
 
   val client = actor(new Act with ActorLogging {
@@ -56,7 +55,7 @@ class ClientNode(nodes: Map[String, Int]) {
   
       case Pong(msg) =>
         log.info(msg)
-   
+  
       case state: CurrentClusterState =>
         // For demo purposes, log currently known up members
         log.info(state.members.filter(_.status == MemberStatus.Up).toString)
@@ -73,13 +72,23 @@ class ClientNode(nodes: Map[String, Int]) {
   // Ensure client is subscribed for member up events (i.e. allow introduction of new nodes for pinging)
   cluster.subscribe(client, classOf[MemberUp])
 
-  // Finally, provision our required nodes
+  // Defines how we provision our cluster nodes
+  def provisionNode(label: Label): Unit
+
+  def shutdown: Unit
+}
+
+class ClientNode(nodes: Map[String, Int]) extends Client[(String, Int)] {
+  var processes = Set.empty[Process]
+
+  // Provision our required nodes
   for((label, port) <- nodes) {
     provisionNode(label, port)
   }
 
   // Here we shell-out to provision out cluster nodes
-  def provisionNode(label: String, port: Int): Unit = {
+  def provisionNode(data: (String, Int)): Unit = {
+    val (label, port) = data
     val AKKA_HOME = "pwd".!!.stripLineEnd + "/target/dist"
     val jarFiles = s"ls ${AKKA_HOME}/lib/".!!.split("\n").map(AKKA_HOME + "/lib/" + _).mkString(":")
     val proc = Process(s"""java -Xms256M -Xmx1024M -XX:+UseParallelGC -classpath "${AKKA_HOME}/config:${jarFiles}" -Dakka.home=${AKKA_HOME} -Dakka.remote.netty.tcp.port=${port} -Dakka.cluster.roles.1=${label} -Dakka.cluster.seed-nodes.1=${joinAddress} akka.kernel.Main cakesolutions.example.WorkerNode""").run
