@@ -49,9 +49,6 @@ trait Client[Label] {
   // We first ensure that we've joined our cluster!
   cluster.join(joinAddress)
 
-  // Ensure client is subscribed for member up events (i.e. allow introduction of new nodes for pinging)
-  cluster.subscribe(client, classOf[MemberUp])
-
   var addresses = Map.empty[Address, ActorRef]
 
   val client = actor(new Act with ActorLogging {
@@ -74,6 +71,9 @@ trait Client[Label] {
         addresses = addresses + (node -> act)
     }
   })
+
+  // Ensure client is subscribed for member up events (i.e. allow introduction of new nodes for pinging)
+  cluster.subscribe(client, classOf[MemberUp])
 
   // Defines how we provision our cluster nodes
   def provisionNode(label: Label): Unit
