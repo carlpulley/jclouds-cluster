@@ -35,7 +35,7 @@ import org.jclouds.compute.domain.NodeMetadata
 import scala.sys.process._
 import scala.util.Random
 
-class ClusterApplication(supplier: Provisioner, nodes: Set[String]) {
+class Client(supplier: Provisioner, nodes: Set[String]) {
   import ClusterMessages._
 
   val config = ConfigFactory.load()
@@ -67,7 +67,7 @@ class ClusterApplication(supplier: Provisioner, nodes: Set[String]) {
       case MemberUp(member) if (member.roles.nonEmpty) =>
         // Convention: (head) role is used to label the nodes (single) actor
         val node = member.address
-        val act = system.actorOf(Props[ClusterNode].withDeploy(Deploy(scope = RemoteScope(node))), name = member.roles.head)
+        val act = system.actorOf(Props[WorkerActor].withDeploy(Deploy(scope = RemoteScope(node))), name = member.roles.head)
     
         addresses = addresses + (node -> act)
     }
