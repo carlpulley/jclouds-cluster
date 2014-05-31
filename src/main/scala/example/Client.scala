@@ -35,7 +35,7 @@ import org.jclouds.compute.domain.NodeMetadata
 import scala.sys.process._
 import scala.util.Random
 
-class Client(supplier: Provisioner, nodes: Set[String]) {
+trait Client[Label] {
   import ClusterMessages._
 
   val config = ConfigFactory.load()
@@ -49,7 +49,9 @@ class Client(supplier: Provisioner, nodes: Set[String]) {
   // We first ensure that we've joined our cluster!
   cluster.join(joinAddress)
 
-  var machines = Map.empty[Image, NodeMetadata]
+  // Ensure client is subscribed for member up events (i.e. allow introduction of new nodes for pinging)
+  cluster.subscribe(client, classOf[MemberUp])
+
   var addresses = Map.empty[Address, ActorRef]
 
   val client = actor(new Act with ActorLogging {
@@ -73,8 +75,14 @@ class Client(supplier: Provisioner, nodes: Set[String]) {
     }
   })
 
-  // Ensure client is subscribed for member up events (i.e. allow introduction of new nodes for pinging)
-  cluster.subscribe(client, classOf[MemberUp])
+  // Defines how we provision our cluster nodes
+  def provisionNode(label: Label): Unit
+
+  def shutdown: Unit
+}
+
+class ClientNode(supplier: Provisioner, nodes: Set[String]) extends Client[String] {
+  var machines = Map.empty[Image, NodeMetadata]
 
   // Finally, provision our required nodes
   for(label <- nodes) {
@@ -95,7 +103,7 @@ class Client(supplier: Provisioner, nodes: Set[String]) {
   }
 
   def shutdown = {
-    for((node, metadata) <- machines) {
+    for((node, _) <- machines) {
       node.shutdown
     }
     system.shutdown
