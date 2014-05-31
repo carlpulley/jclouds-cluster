@@ -21,8 +21,8 @@ import akka.actor.Address
 import net.liftweb.json.JsonDSL._
 
 // Simply run:
-//  - the 'bootstrap' method to provision a cloud providers Ubuntu instance
-//  - the 'suspend' and 'resume' methods allow the instance to be saved and resumed (provider dependent)
+//  - the 'bootstrap' method to provision a cloud vendors Ubuntu instance
+//  - the 'suspend' and 'resume' methods allow the instance to be saved and resumed (vendor dependent)
 //  - the 'reboot' method reboots the instance
 //  - and the 'shutdown' method to terminate that instance
 
@@ -30,7 +30,7 @@ sealed trait Provisioner
 case object Rackspace extends Provisioner
 case object Amazon extends Provisioner
 
-class RackspaceProvisioner(role: String, seedNode: Address) extends provider.Rackspace.Ubuntu("12.04") {
+class RackspaceProvisioner(role: String, seedNode: Address) extends vendor.Rackspace.Ubuntu("12.04") {
   template_builder
     .minRam(2048)
 
@@ -43,7 +43,7 @@ class RackspaceProvisioner(role: String, seedNode: Address) extends provider.Rac
   ports += 2552
 }
 
-class AmazonProvisioner(role: String, seedNode: Address) extends provider.AwsEc2.Ubuntu("12.04") {
+class AmazonProvisioner(role: String, seedNode: Address) extends vendor.AwsEc2.Ubuntu("12.04") {
   template_builder
     .minRam(2048)
 

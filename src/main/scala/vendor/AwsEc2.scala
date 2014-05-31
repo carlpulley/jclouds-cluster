@@ -15,7 +15,7 @@
 
 package cakesolutions
 
-package provider.AwsEc2
+package vendor.AwsEc2
 
 import scala.collection.JavaConversions._
 import org.jclouds.ContextBuilder
@@ -26,7 +26,7 @@ import org.jclouds.sshj.config.SshjSshClientModule
 
 // Reference: http://jclouds.apache.org/guides/aws-ec2/
 
-// AWS EC2 provider configuration data (shared between provider image instances)
+// AWS EC2 vendor configuration data (shared between vendor image instances)
 trait Config { self: ClientContextConfig => 
   private[this] lazy val id = config.getString("aws-ec2.id")
   private[this] lazy val apikey = config.getString("aws-ec2.apikey")
@@ -38,7 +38,7 @@ trait Config { self: ClientContextConfig =>
       .buildView(classOf[ComputeServiceContext])
 }
 
-// Provider specialization of images
+// Vendor specialization of images
 
 abstract class Ubuntu(version: String) extends image.Ubuntu(version) with Config {
   override lazy val admin = LoginCredentials.builder()

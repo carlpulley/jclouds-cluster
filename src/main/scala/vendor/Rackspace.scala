@@ -15,7 +15,7 @@
 
 package cakesolutions
 
-package provider.Rackspace
+package vendor.Rackspace
 
 import scala.collection.JavaConversions._
 import org.jclouds.ContextBuilder
@@ -27,7 +27,7 @@ import org.jclouds.sshj.config.SshjSshClientModule
 
 // Reference: http://jclouds.apache.org/guides/rackspace/
 
-// Provider specialization of images
+// Vendor specialization of images
 
 abstract class Ubuntu(version: String) extends image.Ubuntu(version) {
   private[this] lazy val region = config.getString("rackspace.region")
