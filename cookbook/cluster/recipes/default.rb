@@ -27,6 +27,7 @@ cookbook_file "/tmp/#{node[:cluster][:service]}-#{node[:cluster][:version]}.deb"
 end
 
 package "cluster" do
+  provider Chef::Provider::Package::Dpkg
   source "/tmp/#{node[:cluster][:service]}-#{node[:cluster][:version]}.deb"
   action :install
 end

@@ -30,7 +30,7 @@ sealed trait Provisioner
 case object Rackspace extends Provisioner
 case object Amazon extends Provisioner
 
-class RackspaceProvisioner(role: String, seedNode: Address) extends vendor.Rackspace.Ubuntu("12.04") {
+class RackspaceProvisioner(role: String, seedNode: Address) extends vendor.Rackspace.Ubuntu("13.10") {
   template_builder
     .minRam(2048)
 
@@ -38,19 +38,23 @@ class RackspaceProvisioner(role: String, seedNode: Address) extends vendor.Racks
     .addRecipe("java")
     .addRecipe("cluster")
 
+  chef_attributes += ("java" -> ("jdk_version" -> "7"))
   chef_attributes += ("cluster" -> ("role" -> role) ~ ("seedNode" -> seedNode.toString))
 
   ports += 2552
 }
 
-class AmazonProvisioner(role: String, seedNode: Address) extends vendor.AwsEc2.Ubuntu("12.04") {
+// Since Ubuntu 12.04, we use image ID rather than OS version (see https://cloud-images.ubuntu.com/locator/ec2/)
+class AmazonProvisioner(role: String, seedNode: Address) extends vendor.AwsEc2.Ubuntu("") {
   template_builder
+    .imageId("us-east-1/ami-84df3cec")
     .minRam(2048)
 
   chef_runlist
     .addRecipe("java")
     .addRecipe("cluster")
 
+  chef_attributes += ("java" -> ("jdk_version" -> "7"))
   chef_attributes += ("cluster" -> ("role" -> role) ~ ("seedNode" -> seedNode.toString))
 
   ports += 2552

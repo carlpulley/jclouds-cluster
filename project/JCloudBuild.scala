@@ -97,7 +97,7 @@ object JCloudBuild extends Build with Resolvers with Dependencies {
     javacOptions ++= Seq("-Xlint:unchecked", "-Xlint:deprecation"),
     javaOptions ++= jvmOptions,
     parallelExecution in Test := false,
-    mainClass in Compile := Some("cakesolutions.example.WorkerNode"),
+    mainClass in Compile := Some("akka.kernel.Main cakesolutions.example.WorkerNode"),
     packageDescription := "Ping-Pong Application (Clustered)",
     packageSummary in Linux := "Ping-Pong Application (Clustered)",
     maintainer in Linux := "Carl Pulley",
