@@ -16,8 +16,8 @@
 import sbt._
 import Process._
 import Keys._
-import akka.sbt.AkkaKernelPlugin
-import akka.sbt.AkkaKernelPlugin.{ Dist, outputDirectory, distJvmOptions, configSourceDirs }
+import com.typesafe.sbt.SbtNativePackager._
+import NativePackagerKeys._
 
 trait Resolvers {
   val JCloudResolvers = Seq(
@@ -82,10 +82,8 @@ trait Dependencies {
 }
 
 object JCloudBuild extends Build with Resolvers with Dependencies {
-  val jvmOptions = Seq("-Xms256M", "-Xmx1024M", "-XX:+UseParallelGC")
-
-  lazy val JCloudSettings = Defaults.defaultSettings ++ AkkaKernelPlugin.distSettings ++ Seq(
-    organization := "Cake Solutions Limited",
+  lazy val JCloudSettings = Defaults.defaultSettings ++ packageArchetype.java_server ++ Seq(
+    organization := "CakeSolutions",
     version := "1.0",
     scalaVersion := V.SCALA,
     shellPrompt := { st => Project.extract(st).currentProject.id + "> " },
@@ -95,16 +93,25 @@ object JCloudBuild extends Build with Resolvers with Dependencies {
     checksums := Seq("sha1", "md5"),
     scalacOptions ++= Seq("-deprecation", "-unchecked", "-feature", "-language:experimental.macros"),
     javacOptions ++= Seq("-Xlint:unchecked", "-Xlint:deprecation"),
-    javaOptions ++= jvmOptions,
+    javaOptions ++= Seq("-Xms256M", "-Xmx1024M", "-XX:+UseParallelGC"),
     parallelExecution in Test := false,
-    distJvmOptions in Dist := jvmOptions.mkString(" "),
-    outputDirectory in Dist := file("cookbook/cluster/files/default/cluster-deploy"),
-    configSourceDirs in Dist := Seq(file("src/main/resources")),
+    //outputDirectory in Dist := file("cookbook/cluster/files/default/cluster-deploy"),
+    //configSourceDirs in Dist := Seq(file("src/main/resources")),
+    mainClass in Compile := Some("cakesolutions.example.WorkerNode"),
+    packageDescription := "Ping-Pong Application",
+    packageSummary in Linux := "Ping-Pong Application",
+    maintainer in Linux := "Carl Pulley",
+    daemonUser in Linux := "cluster",
+    daemonGroup in Linux := "cluster",
+    rpmVendor := "CakeSolutions",
+    rpmLicense := Some("xxx"),
+    rpmGroup := Some("group"),
+    rpmBrpJavaRepackJars := true,
     initialCommands in console := "import cakesolutions.example._; import cakesolutions.example.ClusterMessages._"
   )
   
   lazy val root = Project(
-    id = "jclouds",
+    id = "cluster",
     base = file("."),
     settings = JCloudSettings
   )
