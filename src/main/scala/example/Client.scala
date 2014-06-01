@@ -89,7 +89,7 @@ class ClientNode(nodes: Map[String, Int]) extends Client[(String, Int)] {
   // Here we shell-out to provision out cluster nodes
   def provisionNode(data: (String, Int)): Unit = {
     val (label, port) = data
-    val AKKA_HOME = "pwd".!!.stripLineEnd + "/target/dist"
+    val AKKA_HOME = "pwd".!!.stripLineEnd + "/target/universal/stage"
     val jarFiles = s"ls ${AKKA_HOME}/lib/".!!.split("\n").map(AKKA_HOME + "/lib/" + _).mkString(":")
     val proc = Process(s"""java -Xms256M -Xmx1024M -XX:+UseParallelGC -classpath "${AKKA_HOME}/config:${jarFiles}" -Dakka.home=${AKKA_HOME} -Dakka.remote.netty.tcp.port=${port} -Dakka.cluster.roles.1=${label} -Dakka.cluster.seed-nodes.1=${joinAddress} akka.kernel.Main cakesolutions.example.WorkerNode""").run
 
