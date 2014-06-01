@@ -109,6 +109,10 @@ object JCloudBuild extends Build with Resolvers with Dependencies {
     rpmLicense := Some("GPLv3+"),
     rpmGroup := Some("group"),
     rpmBrpJavaRepackJars := true,
+    // Ensure that we do not pack the jclouds.conf resource!
+    mappings in (Compile, packageBin) ~= { _.filterNot { case (_, name) =>
+      Seq("jclouds.conf").contains(name)
+    }},
     initialCommands in console := "import cakesolutions.example._; import cakesolutions.example.ClusterMessages._"
   )
   
