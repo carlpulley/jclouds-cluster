@@ -26,7 +26,8 @@ trait Resolvers {
     "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/",
     "Typesafe Snapshots" at "http://repo.typesafe.com/typesafe/snapshots/",
     "Sonatype Releases" at "http://oss.sonatype.org/content/repositories/releases",
-    "Sonatype Snapshots" at "https://oss.sonatype.org/content/repositories/snapshots"
+    "Sonatype Snapshots" at "https://oss.sonatype.org/content/repositories/snapshots",
+    "Spray Repository" at "http://repo.spray.io"
   )
 }
 
@@ -40,6 +41,7 @@ object V {
   val SCALACHECK = "1.11.4"
   val SCALATEST = "2.1.7"
   val SLF4J = "1.7.5"
+  val SPRAY = "1.3.1"
 }
 
 trait Dependencies {
@@ -55,22 +57,9 @@ trait Dependencies {
     "com.typesafe.akka" %% "akka-cluster" % V.AKKA,
     "com.typesafe.akka" %% "akka-testkit" % V.AKKA % "test"
   )
-  
-  val JClouds = Seq(
-    // Other cloud providers are possible here (e.g. Google Compute Engine, Microsoft Azure, Virtualbox, etc.)
-    "org.apache.jclouds.provider" % "aws-ec2" % V.JCLOUDS,
-    "org.apache.jclouds.provider" % "rackspace-cloudservers-uk" % V.JCLOUDS,
-    // Other provisioners are possible (e.g. Puppet)
-    "org.apache.jclouds.api" % "chef" % V.JCLOUDS,
-    // Miscellaneous support code
-    "org.apache.jclouds.api" % "openstack-nova" % V.JCLOUDS,
-    "org.apache.jclouds.driver" % "jclouds-sshj" % V.JCLOUDS,
-    // Needed due to "issues"
-    "com.google.code.findbugs" % "jsr305" % "1.3.9",
-    "org.eclipse.jetty.orbit" % "javax.servlet" % "3.0.0.v201112011016" artifacts (Artifact("javax.servlet", "jar", "jar")),
-    // JClouds Logging
-    "org.slf4j" % "slf4j-log4j12" % V.SLF4J,
-    "log4j" % "log4j" % V.LOG4J
+
+  val Spray = Seq(
+    "io.spray" % "spray-client" % V.SPRAY
   )
 
   val Miscellaneous = Seq(
@@ -89,17 +78,15 @@ object JCloudBuild extends Build with Resolvers with Dependencies {
     shellPrompt := { st => Project.extract(st).currentProject.id + "> " },
     autoCompilerPlugins := true,
     resolvers := JCloudResolvers,
-    libraryDependencies := Akka ++ JClouds ++ Miscellaneous,
+    libraryDependencies := Akka ++ Spray ++ Miscellaneous,
     checksums := Seq("sha1", "md5"),
     scalacOptions ++= Seq("-deprecation", "-unchecked", "-feature", "-language:experimental.macros"),
     javacOptions ++= Seq("-Xlint:unchecked", "-Xlint:deprecation"),
     javaOptions ++= Seq("-Xms256M", "-Xmx1024M", "-XX:+UseParallelGC"),
     parallelExecution in Test := false,
-    //outputDirectory in Dist := file("cookbook/cluster/files/default/cluster-deploy"),
-    //configSourceDirs in Dist := Seq(file("src/main/resources")),
     mainClass in Compile := Some("cakesolutions.example.WorkerNode"),
-    packageDescription := "Ping-Pong Application",
-    packageSummary in Linux := "Ping-Pong Application",
+    packageDescription := "Ping-Pong Application (Clustered)",
+    packageSummary in Linux := "Ping-Pong Application (Clustered)",
     maintainer in Linux := "Carl Pulley",
     daemonUser in Linux := "cluster",
     daemonGroup in Linux := "cluster",
