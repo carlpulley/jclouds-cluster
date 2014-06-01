@@ -97,7 +97,11 @@ object JCloudBuild extends Build with Resolvers with Dependencies {
     javacOptions ++= Seq("-Xlint:unchecked", "-Xlint:deprecation"),
     javaOptions ++= jvmOptions,
     parallelExecution in Test := false,
-    mainClass in Compile := Some("akka.kernel.Main cakesolutions.example.WorkerNode"),
+    mainClass in Compile := Some("akka.kernel.Main"),
+    bashScriptExtraDefines += """addApp "cakesolutions.example.WorkerNode" """,
+    // These tokens are replaced in the start script when the Chef provisioner runs
+    bashScriptExtraDefines += """addJava "-Dakka.cluster.roles.1={{ROLE}}" """,
+    bashScriptExtraDefines += """addJava "-Dakka.cluster.seed-nodes.1={{SEEDNODE}}" """,
     packageDescription := "Ping-Pong Application (Clustered)",
     packageSummary in Linux := "Ping-Pong Application (Clustered)",
     maintainer in Linux := "Carl Pulley",

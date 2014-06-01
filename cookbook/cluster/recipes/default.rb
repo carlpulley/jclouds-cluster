@@ -26,10 +26,20 @@ cookbook_file "/tmp/#{node[:cluster][:service]}-#{node[:cluster][:version]}.deb"
   mode "0444"
 end
 
-package "cluster" do
+package node[:cluster][:service] do
   provider Chef::Provider::Package::Dpkg
   source "/tmp/#{node[:cluster][:service]}-#{node[:cluster][:version]}.deb"
   action :install
+end
+
+execute "add-ROLE" do
+  command "sed -pi -e 's/{{ROLE}}/#{node[:cluster][:role]}/g' /usr/share/#{node[:cluster][:service]}/bin/start"
+  not_if { node[:cluster][:role].nil? }
+end
+
+execute "add-SEEDNODE" do
+  command "sed -pi -e 's/{{SEEDNODE}}/#{node[:cluster][:seedNode]}/g' /usr/share/#{node[:cluster][:service]}/bin/start"
+  not_if { node[:cluster][:seedNode].nil? }
 end
 
 service node[:cluster][:service] do
