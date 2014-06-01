@@ -33,12 +33,12 @@ package node[:cluster][:service] do
 end
 
 execute "add-ROLE" do
-  command "sed -pi -e 's/{{ROLE}}/#{node[:cluster][:role]}/g' /usr/share/#{node[:cluster][:service]}/bin/start"
+  command "sed -i -e 's/{{ROLE}}/#{node[:cluster][:role]}/g' /usr/share/#{node[:cluster][:service]}/bin/#{node[:cluster][:service]}"
   not_if { node[:cluster][:role].nil? }
 end
 
 execute "add-SEEDNODE" do
-  command "sed -pi -e 's/{{SEEDNODE}}/#{node[:cluster][:seedNode]}/g' /usr/share/#{node[:cluster][:service]}/bin/start"
+  command "sed -i -e 's/{{SEEDNODE}}/#{node[:cluster][:seedNode]}/g' /usr/share/#{node[:cluster][:service]}/bin/#{node[:cluster][:service]}"
   not_if { node[:cluster][:seedNode].nil? }
 end
 
