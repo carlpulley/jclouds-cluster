@@ -1,6 +1,0 @@
-[submodule "cookbook/java"]
-	path = cookbook/java
-	url = https://github.com/opscode-cookbooks/java.git
-[submodule "cookbook/apt"]
-	path = cookbook/apt
-	url = https://github.com/opscode-cookbooks/apt.git
