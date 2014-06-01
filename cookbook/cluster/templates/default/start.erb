@@ -1,7 +1,0 @@
-#!/bin/sh
-
-AKKA_HOME="$(cd "$(cd "$(dirname "$0")"; pwd -P)"/..; pwd)"
-AKKA_CLASSPATH="$AKKA_HOME/config:$AKKA_HOME/lib/*"
-JAVA_OPTS="-Xms256M -Xmx1024M -XX:+UseParallelGC"
-
-java $JAVA_OPTS -cp "$AKKA_CLASSPATH" -Dakka.home="$AKKA_HOME" -Dakka.remote.netty.tcp.port=<%= node[:cluster][:port] %> <%= "-Dakka.cluster.roles.1=#{node[:cluster][:role]}" unless node[:cluster][:role].nil? %> <%= "-Dakka.cluster.seed-nodes.1=#{node[:cluster][:seedNode]}" unless node[:cluster][:seedNode].nil? %> akka.kernel.Main "$@"

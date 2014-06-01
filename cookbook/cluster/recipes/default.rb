@@ -15,45 +15,24 @@
 
 include_recipe "java"
 
-user node[:cluster][:uid] do
+user node[:cluster][:service] do
   action :create
 end
 
-remote_directory "#{node[:cluster][:deploy_dir]}/#{node[:cluster][:service]}" do
-  source "cluster-deploy"
-  purge true
-  owner 'root'
-  group 'root'
-  mode 0755
-  files_mode 0644
+cookbook_file "/tmp/#{node[:cluster][:service]}-#{node[:cluster][:version]}.deb" do
+  source "#{node[:cluster][:service]}-#{node[:cluster][:version]}.deb"
+  owner "root"
+  group "root"
+  mode "0444"
 end
 
-template "#{node[:cluster][:deploy_dir]}/#{node[:cluster][:service]}/bin/start" do
-  source "start.erb"
-  owner 'root'
-  group 'root'
-  mode 0644
-end
-
-bash "create-service-log" do
-  code <<-EOF
-  touch /var/log/#{node[:cluster][:service]}.log
-  chown #{node[:cluster][:uid]}:adm /var/log/#{node[:cluster][:service]}.log
-  EOF
+package "cluster" do
+  source "/tmp/#{node[:cluster][:service]}-#{node[:cluster][:version]}.deb"
+  action :install
 end
 
 service node[:cluster][:service] do
   provider Chef::Provider::Service::Upstart
   supports :restart => true, :start => true, :stop => true
-end
-
-template "/etc/init/#{node[:cluster][:service]}.conf" do
-  source "cluster.conf.erb"
-  owner 'root'
-  group 'root'
-  mode 0644
-end
-
-service node[:cluster][:service] do
   action [:enable, :start]
 end
