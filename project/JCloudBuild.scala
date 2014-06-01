@@ -90,8 +90,10 @@ object JCloudBuild extends Build with Resolvers with Dependencies {
     maintainer in Linux := "Carl Pulley",
     daemonUser in Linux := "cluster",
     daemonGroup in Linux := "cluster",
+    debianPackageDependencies in Debian ++= Seq("openjdk-7-jre"),
+    rpmRequirements ++= Seq("java-1.7.0-openjdk"),
     rpmVendor := "CakeSolutions",
-    rpmLicense := Some("xxx"),
+    rpmLicense := Some("GPLv3+"),
     rpmGroup := Some("group"),
     rpmBrpJavaRepackJars := true,
     initialCommands in console := "import cakesolutions.example._; import cakesolutions.example.ClusterMessages._"
