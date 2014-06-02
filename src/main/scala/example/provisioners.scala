@@ -19,6 +19,7 @@ package example
 
 import akka.actor.Address
 import net.liftweb.json.JsonDSL._
+import org.jclouds.ec2.domain.InstanceType._
 
 // Simply run:
 //  - the 'bootstrap' method to provision a cloud vendors Ubuntu instance
@@ -48,7 +49,7 @@ class RackspaceProvisioner(role: String, seedNode: Address) extends vendor.Racks
 class AmazonProvisioner(role: String, seedNode: Address) extends vendor.AwsEc2.Ubuntu("") {
   template_builder
     .imageId("us-east-1/ami-84df3cec")
-    .minRam(2048)
+    .hardwareId(M3_MEDIUM)
 
   chef_runlist
     .addRecipe("java")

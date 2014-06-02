@@ -38,12 +38,12 @@ execute "add-ROLE" do
 end
 
 execute "add-SEEDNODE" do
-  command "sed -i -e 's/{{SEEDNODE}}/#{node[:cluster][:seedNode]}/g' /usr/share/#{node[:cluster][:service]}/bin/#{node[:cluster][:service]}"
+  command "sed -i -e 's|{{SEEDNODE}}|#{node[:cluster][:seedNode]}|g' /usr/share/#{node[:cluster][:service]}/bin/#{node[:cluster][:service]}"
   not_if { node[:cluster][:seedNode].nil? }
 end
 
 service node[:cluster][:service] do
   provider Chef::Provider::Service::Upstart
   supports :restart => true, :start => true, :stop => true
-  action [:enable, :start]
+  action [:enable, :restart]
 end
