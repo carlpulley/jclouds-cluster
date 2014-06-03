@@ -27,12 +27,11 @@ import spray.http.Uri.Query
 import spray.client.pipelining._
 
 // TODO: want sendReceive to hit a given hostname!
-trait Classic {
+abstract class Classic(implicit actorFactory: ActorRefFactory) {
 
   val config = ConfigFactory.load()
 
-  implicit val actorFactory: ActorRefFactory
-  implicit val dispatcher = actorFactory.dispatcher
+  implicit val dispatcher = actorFactory.dispatcher // FIXME: NullPointerException's here!
 
   val pipeline: HttpRequest => Future[HttpResponse] = sendReceive
 

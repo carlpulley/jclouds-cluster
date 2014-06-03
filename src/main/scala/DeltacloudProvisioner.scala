@@ -15,9 +15,11 @@
 
 package cakesolutions
 
+import akka.actor.ActorSystem
 import akka.actor.Address
+import cakesolutions.api.deltacloud
 
-class DeltacloudProvisioner[NodeMetadata](label: String, joinAddress: Address) {
+class DeltacloudProvisioner[NodeMetadata](label: String, joinAddress: Address)(implicit system: ActorSystem) extends deltacloud.Classic {
   def bootstrap: NodeMetadata = {
     // TODO:
     ???
