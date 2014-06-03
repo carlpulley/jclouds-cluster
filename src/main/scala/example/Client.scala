@@ -31,11 +31,10 @@ import akka.cluster.ClusterEvent.MemberUp
 import akka.cluster.MemberStatus
 import akka.remote.RemoteScope
 import com.typesafe.config.ConfigFactory
-import org.jclouds.compute.domain.NodeMetadata
 import scala.sys.process._
 import scala.util.Random
 
-trait Client[Label] {
+trait Client[Label, NodeMetadata] {
   import ClusterMessages._
 
   val config = ConfigFactory.load()
@@ -81,8 +80,8 @@ trait Client[Label] {
   def shutdown: Unit
 }
 
-class ClientNode(supplier: Provisioner, nodes: Set[String]) extends Client[String] {
-  var machines = Map.empty[Image, NodeMetadata]
+class ClientNode[NodeMetadata](nodes: Set[String]) extends Client[String, NodeMetadata] {
+  var machines = Map.empty[DeltacloudProvisioner[NodeMetadata], NodeMetadata]
 
   // Finally, provision our required nodes
   for(label <- nodes) {
@@ -91,12 +90,7 @@ class ClientNode(supplier: Provisioner, nodes: Set[String]) extends Client[Strin
 
   // Here we provision our cluster nodes
   def provisionNode(label: String): Unit = {
-    val node = supplier match {
-      case Rackspace =>
-        new RackspaceProvisioner(label, joinAddress)
-      case Amazon =>
-        new AmazonProvisioner(label, joinAddress)
-    }
+    val node = new DeltacloudProvisioner[NodeMetadata](label, joinAddress)
     val metadata = node.bootstrap
     
     machines = machines + (node -> metadata)
