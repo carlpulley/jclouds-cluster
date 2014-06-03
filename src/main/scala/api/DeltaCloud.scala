@@ -26,6 +26,7 @@ import spray.http._
 import spray.http.Uri.Query
 import spray.client.pipelining._
 
+// TODO: want sendReceive to hit a given hostname!
 trait Classic {
 
   val config = ConfigFactory.load()
@@ -36,9 +37,9 @@ trait Classic {
   val pipeline: HttpRequest => Future[HttpResponse] = sendReceive
 
   object Instances {
-    def show(id: String) = pipeline(Get(s"/instances/$id"))
+    def show(id: String) = pipeline(Get(s"/api/instances/$id"))
 
-    def index(realm_id: Option[String] = None) = pipeline(Get(Uri("/instances").copy(query = Query(Map(
+    def index(realm_id: Option[String] = None) = pipeline(Get(Uri("/api/instances").copy(query = Query(Map(
       "realm_id" -> realm_id
     ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))
 
@@ -59,7 +60,7 @@ trait Classic {
       snapshot_id: Option[String] = None,
       device_name: Option[String] = None,
       sandbox: Option[String] = None
-    ) = pipeline(Post("/instances", FormData(Seq(
+    ) = pipeline(Post("/api/instances", FormData(Seq(
           "metric" -> metric, 
           "name" -> name, 
           "keyname" -> keyname, 
@@ -78,13 +79,13 @@ trait Classic {
           "sandbox" -> sandbox
     ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))
 
-    def reboot(id: String) = pipeline(Post(s"/instances/$id/reboot"))
+    def reboot(id: String) = pipeline(Post(s"/api/instances/$id/reboot"))
 
-    def start(id: String) = pipeline(Post(s"/instances/$id/start"))
+    def start(id: String) = pipeline(Post(s"/api/instances/$id/start"))
 
-    def stop(id: String) = pipeline(Post(s"/instances/$id/stop"))
+    def stop(id: String) = pipeline(Post(s"/api/instances/$id/stop"))
 
-    def destroy(id: String) = pipeline(Delete(s"/instances/$id"))
+    def destroy(id: String) = pipeline(Delete(s"/api/instances/$id"))
 
     def run(
       id: String,
@@ -93,7 +94,7 @@ trait Classic {
       password: Option[String] = None,
       ip: Option[String] = None,
       port: Int = 22
-    ) = pipeline(Post(s"/instances/$id/run", FormData(Seq(
+    ) = pipeline(Post(s"/api/instances/$id/run", FormData(Seq(
           "cmd" -> Some(cmd), 
           "private_key" -> private_key, 
           "password" -> password, 
