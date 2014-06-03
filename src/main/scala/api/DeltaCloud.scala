@@ -19,21 +19,32 @@ package api
 
 package deltacloud
 
-import akka.actor.ActorRefFactory
+import akka.actor.ActorSystem
+import akka.io.IO
+import akka.pattern.ask
+import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
+import scala.concurrent.duration._
 import scala.concurrent.Future
+import spray.can.Http
 import spray.http._
 import spray.http.Uri.Query
 import spray.client.pipelining._
 
 // TODO: want sendReceive to hit a given hostname!
-abstract class Classic(implicit actorFactory: ActorRefFactory) {
+abstract class Classic(implicit system: ActorSystem) {
+
+  import system.dispatcher
 
   val config = ConfigFactory.load()
 
-  implicit val dispatcher = actorFactory.dispatcher // FIXME: NullPointerException's here!
+  implicit val timeout = Timeout(config.getInt("deltacloud.timeout").seconds)
 
-  val pipeline: HttpRequest => Future[HttpResponse] = sendReceive
+  val deltacloudPipeline: Future[SendReceive] =
+    for (
+      Http.HostConnectorInfo(connector, _) <- IO(Http) ? Http.HostConnectorSetup(config.getString("deltacloud.host"), port = config.getInt("deltacloud.port"))
+    ) yield sendReceive(connector)
+  val pipeline = (request: HttpRequest) => deltacloudPipeline.flatMap(_(request))
 
   object Instances {
     def show(id: String) = pipeline(Get(s"/api/instances/$id"))
