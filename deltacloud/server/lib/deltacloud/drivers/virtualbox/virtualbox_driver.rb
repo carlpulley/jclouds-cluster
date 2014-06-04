@@ -40,6 +40,27 @@ module Deltacloud
         feature :storage_volumes, :volume_name
         feature :storage_volumes, :volume_description
 
+        define_hardware_profile 'small' do
+          cpu           1
+          memory        0.5
+          storage       1
+          architecture  `uname -m`.strip
+        end
+        
+        define_hardware_profile 'medium' do
+          cpu           1
+          memory        1
+          storage       1
+          architecture  `uname -m`.strip
+        end
+ 
+        define_hardware_profile 'large' do
+          cpu           2
+          memory        2
+          storage       1
+          architecture  `uname -m`.strip
+        end
+
         define_instance_states do
           create.to( :pending)    .automatically
           pending.to(:start)      .automatically
@@ -51,7 +72,12 @@ module Deltacloud
           poweroff.to( :start )   .on( :start)
         end
 
-        define_hardware_profile('default')
+        def images(credentials, opts = nil)
+          images = convert_images(vbox_client('list vms'))
+          images = filter_on( images, :id, opts )
+          images = filter_on( images, :architecture, opts )
+          images.sort_by{|e| [e.owner_id, e.description]}
+        end
 
         def realms(credentials, opts={})
           return Realm.new({
@@ -61,22 +87,8 @@ module Deltacloud
             :state => 'AVAILABLE'
           })
         end
-
-        def images(credentials, opts = nil)
-          images = convert_images(vbox_client('list vms'))
-          images = filter_on( images, :id, opts )
-          images = filter_on( images, :architecture, opts )
-          images.sort_by{|e| [e.owner_id, e.description]}
-        end
  
-        def instances(credentials, opts = nil)
-          instances = convert_instances(vbox_client('list vms'))
-          instances = filter_on( instances, :id, opts )
-          instances = filter_on( instances, :state, opts )
-          instances = filter_on( instances, :image_id, opts )
-          instances
-        end
- 
+        # TODO: use user_data when booting - see http://cloudinit.readthedocs.org/en/latest/topics/datasources.html#no-cloud
         def create_instance(credentials, image_id, opts)
           instance = instances(credentials, { :image_id => image_id }).first
           name = opts[:name] || "#{instance.name} - #{Time.now.to_i}"
@@ -113,15 +125,17 @@ module Deltacloud
             vbox_client("storageattach '#{new_uid}' --storagectl '#{name}'-hd0 --port 0 --device 0 --type hdd --medium '#{new_location}'")
           end
         end
- 
+
+        # TODO: run_on_instance?
+
         def reboot_instance(credentials, id)
           vbox_client("controlvm '#{id}' reset")
         end
- 
-        def stop_instance(credentials, id)
-          vbox_client("controlvm '#{id}' pause")
+  
+        def destroy_instance(credentials, id)
+          vbox_client("controlvm '#{id}' poweroff")
         end
- 
+
         def start_instance(credentials, id)
           instance = instances(credentials, { :id => id }).first
           # Handle 'pause' and 'poweroff' state differently
@@ -131,9 +145,17 @@ module Deltacloud
             vbox_client("controlvm '#{id}' resume")
           end
         end
- 
-        def destroy_instance(credentials, id)
-          vbox_client("controlvm '#{id}' poweroff")
+
+        def stop_instance(credentials, id)
+          vbox_client("controlvm '#{id}' pause")
+        end
+   
+        def instances(credentials, opts = nil)
+          instances = convert_instances(vbox_client('list vms'))
+          instances = filter_on( instances, :id, opts )
+          instances = filter_on( instances, :state, opts )
+          instances = filter_on( instances, :image_id, opts )
+          instances
         end
  
         def storage_volumes(credentials, opts = nil)
