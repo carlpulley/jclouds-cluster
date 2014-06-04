@@ -30,7 +30,9 @@ import spray.can.Http
 import spray.http._
 import spray.client.pipelining._
 
-class Classic(implicit system: ActorSystem) {
+trait Classic {
+
+  implicit val system: ActorSystem
 
   import system.dispatcher
 
