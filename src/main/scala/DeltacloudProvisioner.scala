@@ -46,7 +46,7 @@ class DeltacloudProvisioner(label: String, joinAddress: Address)(implicit system
     if (node.isEmpty) {
       for {
         realms <- Realm.index(state = Some("available"))
-      } yield Instance.create(
+        vm <- Instance.create(
           image_id = config.getString("deltacloud.ec2.image"),
           keyname = Some(config.getString("deltacloud.ec2.keyname")),
           realm_id = Some(realms.head.id),
@@ -59,11 +59,16 @@ class DeltacloudProvisioner(label: String, joinAddress: Address)(implicit system
             |# FIXME: need to setup first-boot.json
             |/usr/bin/chef-client -j /etc/chef/first-boot.json
             |""".stripMargin)
-        ).map(action)
+        )
+      } yield {
+        node = Some(vm)
+        action(vm)
+      }
     }
   }
 
   def shutdown: Unit = {
     node.map(n => Instance.stop(n.id))
+    // TODO: need to schedule a destroy action at a slightly latter point in time (do we need to check and report action failure?)
   }
 }
