@@ -17,15 +17,43 @@ package cakesolutions
 
 import akka.actor.ActorSystem
 import akka.actor.Address
-import cakesolutions.api.deltacloud
+import akka.io.IO
+import akka.pattern.ask
+import akka.util.Timeout
+import cakesolutions.api.deltacloud.Instance
+import com.typesafe.config.ConfigFactory
+import scala.concurrent.duration._
+import spray.can.Http
+import spray.http._
+import spray.client.pipelining._
 
-class DeltacloudProvisioner[NodeMetadata](label: String, joinAddress: Address)(implicit val system: ActorSystem) extends deltacloud.Classic {
-  def bootstrap: NodeMetadata = {
-    // TODO:
-    ???
+class DeltacloudProvisioner(label: String, joinAddress: Address)(implicit system: ActorSystem) {
+  import system.dispatcher
+
+  val config = ConfigFactory.load()
+  val host = config.getString("deltacloud.host")
+  val port = config.getInt("deltacloud.port")
+
+  implicit val timeout = Timeout(config.getInt("deltacloud.timeout").seconds)
+
+  implicit val pipeline = (request: HttpRequest) => 
+    (IO(Http) ? (request, Http.HostConnectorSetup(host, port = port))).mapTo[HttpResponse]
+
+  var node: Option[Instance] = None
+
+  def bootstrap(action: Instance => Unit): Unit = {
+    if (node.isEmpty) {
+      Instance.create(
+        image_id = "ami-84df3cec",
+        keyname = Some("aws-ec2"),
+        realm_id = Some("us-east-1"),
+        hwp_id = Some("m3.medium"),
+        user_data = Some("touch /root/bootstrap") // FIXME:
+      ).map(action(_))
+    }
   }
 
   def shutdown: Unit = {
-    // TODO:
+    node.map(n => Instance.destroy(n.image_id))
   }
 }

@@ -19,17 +19,26 @@ package api
 
 package deltacloud
 
-package methods
-
 import scala.concurrent.Future
 import spray.http._
 import spray.http.Uri.Query
 import spray.client.pipelining._
+import xml.NodeSeq
 
-class HardwareProfile(pipeline: HttpRequest => Future[HttpResponse]) {
-  def index(id: Option[String] = None) = pipeline(Get(Uri("/api/hardware_profiles").copy(query = Query(Map(
-    "id" -> id
-  ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))
+object Subnet {
+  def index()(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Get(Uri("/api/subnets")))
 
-  def show(id: String) = pipeline(Get(s"/api/hardware_profiles/$id"))
+  def show(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Get(s"/api/subnets/$id"))
+
+  def create(
+    network_id: String,
+    address_block: String,
+    name: Option[String] = None
+  )(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Post("/api/subnets", FormData(Seq(
+        "network_id" -> Some(network_id), 
+        "address_block" -> Some(address_block), 
+        "name" -> name
+  ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))
+
+  def destroy(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Delete(s"/api/subnets/$id"))
 }

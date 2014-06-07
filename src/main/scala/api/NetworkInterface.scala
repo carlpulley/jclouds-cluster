@@ -19,27 +19,26 @@ package api
 
 package deltacloud
 
-package methods
-
 import scala.concurrent.Future
 import spray.http._
 import spray.http.Uri.Query
 import spray.client.pipelining._
+import xml.NodeSeq
 
-class Key(pipeline: HttpRequest => Future[HttpResponse]) {
-  def index(id: Option[String] = None) = pipeline(Get(Uri("/api/keys").copy(query = Query(Map(
-    "id" -> id
-  ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))
+object NetworkInterface {
+  def index()(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Get(Uri("/api/network_interfaces")))
 
-  def show(id: String) = pipeline(Get(s"/api/keys/$id"))
+  def show(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Get(s"/api/network_interfaces/$id"))
 
   def create(
-    name: String,
-    public_key: Option[String] = None
-  ) = pipeline(Post("/api/keys", FormData(Seq(
-        "name" -> Some(name), 
-        "public_key" -> public_key
+    instance: String,
+    network: String,
+    name: Option[String] = None
+  )(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Post("/api/network_interfaces", FormData(Seq(
+        "instance" -> Some(instance), 
+        "network" -> Some(network),
+        "name" -> name
   ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))
 
-  def destroy(id: String) = pipeline(Delete(s"/api/keys/$id"))
+  def destroy(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Delete(s"/api/network_interfaces/$id"))
 }

@@ -19,20 +19,19 @@ package api
 
 package deltacloud
 
-package methods
-
 import scala.concurrent.Future
 import spray.http._
 import spray.http.Uri.Query
 import spray.client.pipelining._
+import xml.NodeSeq
 
-class StorageVolume(pipeline: HttpRequest => Future[HttpResponse]) {
-  def show(id: String) = pipeline(Get(s"/api/storage_volumes/$id"))
+object StorageVolume {
+  def show(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Get(s"/api/storage_volumes/$id"))
 
   def index(
     id: Option[String] = None, 
     state: Option[String] = None
-  ) = pipeline(Get(Uri("/api/storage_volumes").copy(query = Query(Map(
+  )(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Get(Uri("/api/storage_volumes").copy(query = Query(Map(
     "id" -> id,
     "state" -> state
   ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))
@@ -43,7 +42,7 @@ class StorageVolume(pipeline: HttpRequest => Future[HttpResponse]) {
     realm_id: Option[String] = None,
     name: Option[String] = None,
     description: Option[String] = None
-  ) = pipeline(Post("/api/storage_volumes", FormData(Seq(
+  )(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Post("/api/storage_volumes", FormData(Seq(
         "snapshot_id" -> snapshot_id, 
         "capacity" -> capacity, 
         "realm_id" -> realm_id, 
@@ -51,16 +50,16 @@ class StorageVolume(pipeline: HttpRequest => Future[HttpResponse]) {
         "description" -> description
   ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))
 
-  def destroy(id: String) = pipeline(Delete(s"/api/storage_volumes/$id"))
+  def destroy(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Delete(s"/api/storage_volumes/$id"))
 
   def attach(
     id: String,
     instance_id: String,
     device: Option[String] = None
-  ) = pipeline(Post(s"/api/storage_volumes/$id/attach", FormData(Seq(
+  )(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Post(s"/api/storage_volumes/$id/attach", FormData(Seq(
         "instance_id" -> Some(instance_id), 
         "device" -> device
   ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))
 
-  def detach(id: String) = pipeline(Post(s"/api/storage_volumes/$id/detach"))
+  def detach(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Post(s"/api/storage_volumes/$id/detach"))
 }

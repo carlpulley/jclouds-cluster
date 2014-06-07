@@ -30,11 +30,12 @@ import akka.cluster.ClusterEvent.CurrentClusterState
 import akka.cluster.ClusterEvent.MemberUp
 import akka.cluster.MemberStatus
 import akka.remote.RemoteScope
+import cakesolutions.api.deltacloud.Instance
 import com.typesafe.config.ConfigFactory
 import scala.sys.process._
 import scala.util.Random
 
-trait Client[Label, NodeMetadata] {
+trait Client[Label] {
   import ClusterMessages._
 
   val config = ConfigFactory.load()
@@ -80,8 +81,8 @@ trait Client[Label, NodeMetadata] {
   def shutdown: Unit
 }
 
-class ClientNode[NodeMetadata](nodes: Set[String]) extends Client[String, NodeMetadata] {
-  var machines = Map.empty[DeltacloudProvisioner[NodeMetadata], NodeMetadata]
+class ClientNode(nodes: Set[String]) extends Client[String] {
+  var machines = Map.empty[DeltacloudProvisioner, Instance]
 
   // Finally, provision our required nodes
   for(label <- nodes) {
@@ -90,10 +91,11 @@ class ClientNode[NodeMetadata](nodes: Set[String]) extends Client[String, NodeMe
 
   // Here we provision our cluster nodes
   def provisionNode(label: String): Unit = {
-    val node = new DeltacloudProvisioner[NodeMetadata](label, joinAddress)
-    val metadata = node.bootstrap
-    
-    machines = machines + (node -> metadata)
+    val node = new DeltacloudProvisioner(label, joinAddress)
+    node.bootstrap {
+      case metadata =>
+        machines = machines + (node -> metadata)
+    }
   }
 
   def shutdown = {

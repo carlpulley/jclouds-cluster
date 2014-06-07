@@ -19,19 +19,18 @@ package api
 
 package deltacloud
 
-package methods
-
 import scala.concurrent.Future
 import spray.http._
 import spray.http.Uri.Query
 import spray.client.pipelining._
+import xml.NodeSeq
 
-class LoadBalancer(pipeline: HttpRequest => Future[HttpResponse]) {
-  def index(id: Option[String] = None) = pipeline(Get(Uri("/api/load_balancers").copy(query = Query(Map(
+object LoadBalancer {
+  def index(id: Option[String] = None)(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Get(Uri("/api/load_balancers").copy(query = Query(Map(
     "id" -> id
   ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))
 
-  def show(id: String) = pipeline(Get(s"/api/load_balancers/$id"))
+  def show(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Get(s"/api/load_balancers/$id"))
 
   def create(
     name: String,
@@ -39,7 +38,7 @@ class LoadBalancer(pipeline: HttpRequest => Future[HttpResponse]) {
     listener_protocol: String,
     listener_balancer_port: Int,
     listener_instance_port: Int
-  ) = pipeline(Post("/api/load_balancers", FormData(Seq(
+  )(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Post("/api/load_balancers", FormData(Seq(
         "name" -> name, 
         "realm_id" -> realm_id,
         "listener_protocol" -> listener_protocol,
@@ -47,9 +46,9 @@ class LoadBalancer(pipeline: HttpRequest => Future[HttpResponse]) {
         "listener_instance_port" -> listener_instance_port.toString
   ))))
 
-  def destroy(id: String) = pipeline(Delete(s"/api/load_balancers/$id"))
+  def destroy(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Delete(s"/api/load_balancers/$id"))
 
-  def register(id: String, instance_id: String) = pipeline(Post(s"/api/load_balancers/$id/register", FormData(Map("instance_id" -> instance_id))))
+  def register(id: String, instance_id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Post(s"/api/load_balancers/$id/register", FormData(Map("instance_id" -> instance_id))))
 
-  def unregister(id: String, instance_id: String) = pipeline(Post(s"/api/load_balancers/$id/unregister", FormData(Map("instance_id" -> instance_id))))
+  def unregister(id: String, instance_id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Post(s"/api/load_balancers/$id/unregister", FormData(Map("instance_id" -> instance_id))))
 }

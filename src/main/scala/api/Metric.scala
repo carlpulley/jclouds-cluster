@@ -19,29 +19,16 @@ package api
 
 package deltacloud
 
-package methods
-
 import scala.concurrent.Future
 import spray.http._
 import spray.http.Uri.Query
 import spray.client.pipelining._
+import xml.NodeSeq
 
-class StorageSnapshot(pipeline: HttpRequest => Future[HttpResponse]) {
-  def show(id: String) = pipeline(Get(s"/api/storage_snapshots/$id"))
-
-  def index(id: Option[String] = None) = pipeline(Get(Uri("/api/storage_snapshots").copy(query = Query(Map(
+object Metric {
+  def index(id: Option[String] = None)(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Get(Uri("/api/metrics").copy(query = Query(Map(
     "id" -> id
   ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))
 
-  def create(
-    volume_id: String,
-    name: Option[String] = None,
-    description: Option[String] = None
-  ) = pipeline(Post("/api/storage_snapshots", FormData(Seq(
-        "volume_id" -> Some(volume_id), 
-        "name" -> name, 
-        "description" -> description
-  ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))
-
-  def destroy(id: String) = pipeline(Delete(s"/api/storage_snapshots/$id"))
+  def show(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Get(s"/api/metrics/$id"))
 }

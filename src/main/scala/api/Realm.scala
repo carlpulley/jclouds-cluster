@@ -19,25 +19,21 @@ package api
 
 package deltacloud
 
-package methods
-
 import scala.concurrent.Future
 import spray.http._
 import spray.http.Uri.Query
 import spray.client.pipelining._
+import xml.NodeSeq
+import xml.NodeSeq
 
-class Address(pipeline: HttpRequest => Future[HttpResponse]) {
-  def index(id: Option[String] = None) = pipeline(Get(Uri("/api/addresses").copy(query = Query(Map(
-    "id" -> id
+object Realm {
+  def index(
+    id: Option[String] = None, 
+    state: Option[String] = None
+  )(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Get(Uri("/api/realms").copy(query = Query(Map(
+    "id" -> id,
+    "state" -> state
   ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))
 
-  def show(id: String) = pipeline(Get(s"/api/addresses/$id"))
-
-  def create() = pipeline(Post("/api/addresses"))
-
-  def destroy(id: String) = pipeline(Delete(s"/api/addresses/$id"))
-
-  def associate(id: String, instance_id: String) = pipeline(Post(s"/api/addresses/$id/associate", FormData(Map("instance_id" -> instance_id))))
-
-  def disassociate(id: String) = pipeline(Post(s"/api/addresses/$id/disassociate"))
+  def show(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Get(s"/api/realms/$id"))
 }
