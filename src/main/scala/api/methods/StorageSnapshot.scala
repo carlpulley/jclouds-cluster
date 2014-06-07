@@ -29,7 +29,9 @@ import spray.client.pipelining._
 class StorageSnapshot(pipeline: HttpRequest => Future[HttpResponse]) {
   def show(id: String) = pipeline(Get(s"/api/storage_snapshots/$id"))
 
-  def index() = pipeline(Get(Uri("/api/storage_snapshots")))
+  def index(id: Option[String] = None) = pipeline(Get(Uri("/api/storage_snapshots").copy(query = Query(Map(
+    "id" -> id
+  ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))
 
   def create(
     volume_id: String,

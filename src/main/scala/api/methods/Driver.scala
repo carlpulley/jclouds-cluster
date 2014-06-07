@@ -29,5 +29,11 @@ import spray.client.pipelining._
 class Driver(pipeline: HttpRequest => Future[HttpResponse]) {
   def show(id: String) = pipeline(Get(s"/api/drivers/$id"))
 
-  def index() = pipeline(Get(Uri("/api/drivers")))
+  def index(
+    id: Option[String] = None, 
+    state: Option[String] = None
+  ) = pipeline(Get(Uri("/api/drivers").copy(query = Query(Map(
+    "id" -> id,
+    "state" -> state
+  ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))
 }

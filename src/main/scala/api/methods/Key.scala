@@ -27,7 +27,9 @@ import spray.http.Uri.Query
 import spray.client.pipelining._
 
 class Key(pipeline: HttpRequest => Future[HttpResponse]) {
-  def index() = pipeline(Get(Uri("/api/keys")))
+  def index(id: Option[String] = None) = pipeline(Get(Uri("/api/keys").copy(query = Query(Map(
+    "id" -> id
+  ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))
 
   def show(id: String) = pipeline(Get(s"/api/keys/$id"))
 

@@ -28,9 +28,11 @@ import spray.client.pipelining._
 
 class Image(pipeline: HttpRequest => Future[HttpResponse]) {
   def index(
-    architecture: Option[String] = None,
-    owner_id: Option[String] = None
+    id: Option[String] = None,
+    owner_id: Option[String] = None,
+    architecture: Option[String] = None
   ) = pipeline(Get(Uri("/api/images").copy(query = Query(Map(
+    "id" -> id,
     "architecture" -> architecture,
     "owner_id" -> owner_id
   ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))

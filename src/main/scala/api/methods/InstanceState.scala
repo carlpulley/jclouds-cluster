@@ -28,4 +28,6 @@ import spray.client.pipelining._
 
 class InstanceState(pipeline: HttpRequest => Future[HttpResponse]) {
   def index() = pipeline(Get(Uri("/api/instance_states")))
+
+  def show(name: String) = pipeline(Get(Uri(s"/api/instance_states/$name")))
 }

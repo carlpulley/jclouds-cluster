@@ -48,8 +48,6 @@ trait Classic {
 
   object Addresses extends methods.Address(pipeline)
 
-  object Blobs extends methods.Blob(pipeline)
-
   object Buckets extends methods.Bucket(pipeline)
 
   object Driver extends methods.Driver(pipeline)

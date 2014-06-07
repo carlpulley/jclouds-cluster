@@ -29,7 +29,13 @@ import spray.client.pipelining._
 class StorageVolume(pipeline: HttpRequest => Future[HttpResponse]) {
   def show(id: String) = pipeline(Get(s"/api/storage_volumes/$id"))
 
-  def index() = pipeline(Get(Uri("/api/storage_volumes")))
+  def index(
+    id: Option[String] = None, 
+    state: Option[String] = None
+  ) = pipeline(Get(Uri("/api/storage_volumes").copy(query = Query(Map(
+    "id" -> id,
+    "state" -> state
+  ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))
 
   def create(
     snapshot_id: Option[String] = None,
@@ -50,11 +56,11 @@ class StorageVolume(pipeline: HttpRequest => Future[HttpResponse]) {
   def attach(
     id: String,
     instance_id: String,
-    device: String
+    device: Option[String] = None
   ) = pipeline(Post(s"/api/storage_volumes/$id/attach", FormData(Seq(
-        "instance_id" -> instance_id, 
+        "instance_id" -> Some(instance_id), 
         "device" -> device
-  ))))
+  ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))
 
   def detach(id: String) = pipeline(Post(s"/api/storage_volumes/$id/detach"))
 }

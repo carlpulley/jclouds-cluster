@@ -27,7 +27,13 @@ import spray.http.Uri.Query
 import spray.client.pipelining._
 
 class Realm(pipeline: HttpRequest => Future[HttpResponse]) {
-  def index() = pipeline(Get(Uri("/api/realms")))
+  def index(
+    id: Option[String] = None, 
+    state: Option[String] = None
+  ) = pipeline(Get(Uri("/api/realms").copy(query = Query(Map(
+    "id" -> id,
+    "state" -> state
+  ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))
 
   def show(id: String) = pipeline(Get(s"/api/realms/$id"))
 }

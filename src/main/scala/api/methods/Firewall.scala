@@ -27,13 +27,30 @@ import spray.http.Uri.Query
 import spray.client.pipelining._
 
 class Firewall(pipeline: HttpRequest => Future[HttpResponse]) {
-  def index() = pipeline(Get(Uri("/api/firewalls")))
+  def index(id: Option[String] = None) = pipeline(Get(Uri("/api/firewalls").copy(query = Query(Map(
+    "id" -> id
+  ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))
 
   def show(id: String) = pipeline(Get(s"/api/firewalls/$id"))
 
-  def create() = pipeline(Post("/api/firewalls"))
+  def create(
+    name: String, 
+    description: Option[String] = None
+  ) = pipeline(Post("/api/firewalls", FormData(Seq(
+        "name" -> Some(name), 
+        "description" -> description
+  ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))
 
   def destroy(id: String) = pipeline(Delete(s"/api/firewalls/$id"))
 
-  def rules(id: String) = pipeline(Post(s"/api/firewalls/$id/rules"))
+  def new_rule(
+    id: String, 
+    protocol: String, 
+    port_from: Int, 
+    port_to: Int
+  ) = pipeline(Post(s"/api/firewalls/$id/rules", FormData(Map(
+    "protocol" -> protocol,
+    "port_from" -> port_from.toString,
+    "port_to" -> port_to.toString
+  ))))
 }

@@ -29,15 +29,11 @@ import spray.client.pipelining._
 class Bucket(pipeline: HttpRequest => Future[HttpResponse]) {
   def show(id: String) = pipeline(Get(s"/api/buckets/$id"))
 
-  def index() = pipeline(Get(Uri("/api/buckets")))
+  def index(id: Option[String] = None) = pipeline(Get(Uri("/api/buckets").copy(query = Query(Map(
+    "id" -> id
+  ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))
 
-  def create(
-    name: String,
-    location: Option[String] = None
-  ) = pipeline(Post("/api/buckets", FormData(Seq(
-        "name" -> Some(name), 
-        "location" -> location
-  ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))
+  def create(name: String) = pipeline(Post("/api/buckets", FormData(Map("name" -> name))))
 
   def destroy(id: String) = pipeline(Delete(s"/api/buckets/$id"))
 }

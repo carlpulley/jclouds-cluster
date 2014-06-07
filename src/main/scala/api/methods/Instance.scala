@@ -29,15 +29,21 @@ import spray.client.pipelining._
 class Instance(pipeline: HttpRequest => Future[HttpResponse]) {
   def show(id: String) = pipeline(Get(s"/api/instances/$id"))
 
-  def index(realm_id: Option[String] = None) = pipeline(Get(Uri("/api/instances").copy(query = Query(Map(
+  def index(
+    id: Option[String] = None, 
+    state: Option[String] = None, 
+    realm_id: Option[String] = None
+  ) = pipeline(Get(Uri("/api/instances").copy(query = Query(Map(
+    "id" -> id,
+    "state" -> state,
     "realm_id" -> realm_id
   ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))
 
   def create(
+    image_id: String,
     metric: Option[String] = None,
     name: Option[String] = None,
     keyname: Option[String] = None,
-    image_id: String,
     realm_id: Option[String] = None,
     hwp_id: Option[String] = None,
     user_data: Option[String] = None,
@@ -51,16 +57,16 @@ class Instance(pipeline: HttpRequest => Future[HttpResponse]) {
     device_name: Option[String] = None,
     sandbox: Option[String] = None
   ) = pipeline(Post("/api/instances", FormData(Seq(
+        "image_id" -> Some(image_id), 
         "metric" -> metric, 
         "name" -> name, 
         "keyname" -> keyname, 
-        "image_id" -> Some(image_id), 
         "realm_id" -> realm_id, 
         "hwp_id" -> hwp_id, 
         "user_data" -> user_data, 
         "user_files" -> user_files, 
         "user_iso" -> user_iso, 
-        //"firewalls" -> firewalls, // FIXME:
+        "firewalls" -> Some(firewalls.toString),
         "password" -> password, 
         "load_balancer_id" -> load_balancer_id, 
         "instance_count" -> Some(instance_count.getOrElse(1).toString), 
