@@ -21,6 +21,7 @@ import akka.io.IO
 import akka.pattern.ask
 import akka.util.Timeout
 import cakesolutions.api.deltacloud.Instance
+import cakesolutions.api.deltacloud.Realm
 import com.typesafe.config.ConfigFactory
 import scala.concurrent.duration._
 import spray.can.Http
@@ -43,16 +44,22 @@ class DeltacloudProvisioner(label: String, joinAddress: Address)(implicit system
 
   def bootstrap(action: Instance => Unit): Unit = {
     if (node.isEmpty) {
-      Instance.create(
-        image_id = "ami-84df3cec",
-        keyname = Some("aws-ec2"),
-        realm_id = Some("us-east-1a"),
-        hwp_id = Some("m3.medium"),
-        user_data = Some("""#!/bin/sh
-          |
-          |touch /root/bootstrap
-          |""".stripMargin) // FIXME:
-      ).map(action)
+      for {
+        realms <- Realm.index(state = Some("available"))
+      } yield Instance.create(
+          image_id = config.getString("deltacloud.ec2.image"),
+          keyname = Some(config.getString("deltacloud.ec2.keyname")),
+          realm_id = Some(realms.head.id),
+          hwp_id = Some("m3.medium"),
+          user_data = Some("""#!/bin/bash
+            |
+            |curl -L https://www.opscode.com/chef/install.sh | bash
+            |mkdir /etc/chef
+            |# FIXME: need to add in chef pem file and minimal client.rb
+            |# FIXME: need to setup first-boot.json
+            |/usr/bin/chef-client -j /etc/chef/first-boot.json
+            |""".stripMargin)
+        ).map(action)
     }
   }
 
