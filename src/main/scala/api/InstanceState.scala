@@ -62,7 +62,7 @@ object InstanceState {
 
   implicit val unmarshalInstanceStates = 
     Unmarshaller.delegate[NodeSeq, List[InstanceState]](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`) { data => 
-      (data \ "state").map(xmlToInstanceState(_)).toList
+      (data \ "state").map(xmlToInstanceState).toList
     }
 
   def index()(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 

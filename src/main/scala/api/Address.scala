@@ -48,7 +48,7 @@ object Address {
 
   implicit val unmarshalAddresses = 
     Unmarshaller.delegate[NodeSeq, List[Address]](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`) { data => 
-      (data \ "address").map(xmlToAddress(_)).toList
+      (data \ "address").map(xmlToAddress).toList
     }
 
   def index(id: Option[String] = None)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 

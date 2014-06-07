@@ -29,42 +29,13 @@ import spray.httpx.unmarshalling._
 import spray.client.pipelining._
 import xml.NodeSeq
 
-sealed trait Property
-case class Fixed(name: String, unit: Option[String], value: String) extends Property
-case class Enum(name: String, unit: Option[String], values: List[String]) extends Property
-case class Range(name: String, unit: Option[String], first: String, last: String, default: Option[String] = None) extends Property
-
 case class HardwareProfile(
   id: String,
   properties: List[Property]
 )
 
 object HardwareProfile {
-
-  def xmlToProperty(data: NodeSeq): Property = (data \ "@kind").text match {
-    case "fixed" =>
-      val name = (data \ "@name").text
-      val unit = (data \ "@unit").text
-      val value = (data \ "@value").text
-
-      Fixed(name, if (unit.isEmpty) None else Some(unit), value)
-
-    case "enum" =>
-      val name = (data \ "@name").text
-      val unit = (data \ "@unit").text
-      val values = (data \ "enum" \ "entry").map(n => (n \ "@value").text).toList
-
-      Enum(name, if (unit.isEmpty) None else Some(unit), values)
-
-    case "range" =>
-      val name = (data \ "@name").text
-      val unit = (data \ "@unit").text
-      val first = (data \ "@first").text
-      val last = (data \ "@last").text
-      val default = (data \ "@default").text
-
-      Range(name, if (unit.isEmpty) None else Some(unit), first, last, if (default.isEmpty) None else Some(default))
-  }
+  import Property.xmlToProperty
 
   def xmlToHardwareProfile(data: NodeSeq): HardwareProfile = {
     val id = (data \ "id").text
@@ -78,7 +49,7 @@ object HardwareProfile {
 
   implicit val unmarshalHardwareProfiles = 
     Unmarshaller.delegate[NodeSeq, List[HardwareProfile]](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`) { data => 
-      (data \ "hardware_profile").map(xmlToHardwareProfile(_)).toList
+      (data \ "hardware_profile").map(xmlToHardwareProfile).toList
     }
 
   def index(id: Option[String] = None)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 

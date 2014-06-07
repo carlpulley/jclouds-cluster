@@ -19,28 +19,58 @@ package api
 
 package deltacloud
 
+import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
 import spray.http._
+import spray.http.MediaTypes._
 import spray.http.Uri.Query
+import spray.httpx.TransformerAux.aux2
+import spray.httpx.unmarshalling._
 import spray.client.pipelining._
 import xml.NodeSeq
 
-object StorageSnapshot {
-  def show(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Get(s"/api/storage_snapshots/$id"))
+case class StorageSnapshot(
+  id: String,
+  storage_volume: String
+)
 
-  def index(id: Option[String] = None)(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Get(Uri("/api/storage_snapshots").copy(query = Query(Map(
-    "id" -> id
-  ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))
+object StorageSnapshot {
+
+  def xmlToStorageSnapshot(data: NodeSeq): StorageSnapshot = {
+    val id = (data \ "@id").text
+    val storage_volume = (data \ "storage_volume" \ "@id").text
+  
+    StorageSnapshot(id, storage_volume)
+  }
+
+  implicit val unmarshalStorageSnapshot = 
+    Unmarshaller.delegate[NodeSeq, StorageSnapshot](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`)(xmlToStorageSnapshot)
+
+  implicit val unmarshalStorageSnapshots = 
+    Unmarshaller.delegate[NodeSeq, List[StorageSnapshot]](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`) { data => 
+      (data \ "storage_snapshot").map(xmlToStorageSnapshot).toList
+    }
+
+  def show(id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
+    (pipeline ~> unmarshal[StorageSnapshot])(aux2)(Get(s"/api/storage_snapshots/$id"))
+
+  def index(id: Option[String] = None)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
+    (pipeline ~> unmarshal[List[StorageSnapshot]])(aux2)(Get(Uri("/api/storage_snapshots").copy(query = Query(Map(
+      "id" -> id
+    ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))
 
   def create(
     volume_id: String,
     name: Option[String] = None,
     description: Option[String] = None
-  )(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Post("/api/storage_snapshots", FormData(Seq(
+  )(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
+    (pipeline ~> unmarshal[StorageSnapshot])(aux2)(Post("/api/storage_snapshots", FormData(Seq(
         "volume_id" -> Some(volume_id), 
         "name" -> name, 
         "description" -> description
-  ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))
+    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))
 
-  def destroy(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Delete(s"/api/storage_snapshots/$id"))
+  def destroy(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
+    pipeline(Delete(s"/api/storage_snapshots/$id"))
+
 }

@@ -50,7 +50,7 @@ object Bucket {
 
   implicit val unmarshalBuckets = 
     Unmarshaller.delegate[NodeSeq, List[Bucket]](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`) { data => 
-      (data \ "bucket").map(xmlToBucket(_)).toList
+      (data \ "bucket").map(xmlToBucket).toList
     }
 
   def show(id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]): Future[Bucket] = 

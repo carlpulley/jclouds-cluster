@@ -48,7 +48,7 @@ object Driver {
 
   implicit val unmarshalDrivers = 
     Unmarshaller.delegate[NodeSeq, List[Driver]](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`) { data => 
-      (data \ "driver").map(xmlToDriver(_)).toList
+      (data \ "driver").map(xmlToDriver).toList
     }
 
   def show(id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 

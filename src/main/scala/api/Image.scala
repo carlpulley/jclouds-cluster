@@ -56,7 +56,7 @@ object Image {
 
   implicit val unmarshalImages = 
     Unmarshaller.delegate[NodeSeq, List[Image]](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`) { data => 
-      (data \ "image").map(xmlToImage(_)).toList
+      (data \ "image").map(xmlToImage).toList
     }
 
   def index(

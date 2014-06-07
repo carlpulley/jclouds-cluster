@@ -19,16 +19,45 @@ package api
 
 package deltacloud
 
+import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
 import spray.http._
+import spray.http.MediaTypes._
 import spray.http.Uri.Query
+import spray.httpx.TransformerAux.aux2
+import spray.httpx.unmarshalling._
 import spray.client.pipelining._
 import xml.NodeSeq
 
-object Metric {
-  def index(id: Option[String] = None)(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Get(Uri("/api/metrics").copy(query = Query(Map(
-    "id" -> id
-  ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))
+case class Metric(
+  entity: String,
+  properties: List[Property]
+)
 
-  def show(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Get(s"/api/metrics/$id"))
+object Metric {
+  import Property.xmlToProperty
+
+  def xmlToMetric(data: NodeSeq): Metric = {
+    val entity = (data \ "entity").text
+    val properties = (data \ "properties" \ "property").map(xmlToProperty).toList
+  
+    Metric(entity, properties)
+  }
+
+  implicit val unmarshalMetric = 
+    Unmarshaller.delegate[NodeSeq, Metric](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`)(xmlToMetric)
+
+  implicit val unmarshalMetrics = 
+    Unmarshaller.delegate[NodeSeq, List[Metric]](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`) { data => 
+      (data \ "metric").map(xmlToMetric).toList
+    }
+
+  def index(id: Option[String] = None)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
+    (pipeline ~> unmarshal[List[Metric]])(aux2)(Get(Uri("/api/metrics").copy(query = Query(Map(
+      "id" -> id
+    ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))
+
+  def show(id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
+    (pipeline ~> unmarshal[Metric])(aux2)(Get(s"/api/metrics/$id"))
+
 }

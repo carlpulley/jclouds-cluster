@@ -50,7 +50,7 @@ object Key {
 
   implicit val unmarshalKeys = 
     Unmarshaller.delegate[NodeSeq, List[Key]](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`) { data => 
-      (data \ "key").map(xmlToKey(_)).toList
+      (data \ "key").map(xmlToKey).toList
     }
 
   def index(id: Option[String] = None)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 

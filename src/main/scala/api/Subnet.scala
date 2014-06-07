@@ -19,26 +19,62 @@ package api
 
 package deltacloud
 
+import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
 import spray.http._
+import spray.http.MediaTypes._
 import spray.http.Uri.Query
+import spray.httpx.TransformerAux.aux2
+import spray.httpx.unmarshalling._
 import spray.client.pipelining._
 import xml.NodeSeq
 
-object Subnet {
-  def index()(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Get(Uri("/api/subnets")))
+case class Subnet(
+  name: String,
+  network_id: String,
+  address_block: String,
+  state: String,
+  typ: String
+)
 
-  def show(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Get(s"/api/subnets/$id"))
+object Subnet {
+
+  def xmlToSubnet(data: NodeSeq): Subnet = {
+    val name = (data \ "name").text
+    val network_id = (data \ "network" \ "@id").text
+    val address_block = (data \ "address_block").text
+    val state = (data \ "state").text
+    val typ = (data \ "type").text
+  
+    Subnet(name, network_id, address_block, state, typ)
+  }
+
+  implicit val unmarshalSubnet = 
+    Unmarshaller.delegate[NodeSeq, Subnet](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`)(xmlToSubnet)
+
+  implicit val unmarshalSubnets = 
+    Unmarshaller.delegate[NodeSeq, List[Subnet]](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`) { data => 
+      (data \ "subnet").map(xmlToSubnet).toList
+    }
+
+  def index()(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
+    (pipeline ~> unmarshal[List[Subnet]])(aux2)(Get(Uri("/api/subnets")))
+
+  def show(id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
+    (pipeline ~> unmarshal[Subnet])(aux2)(Get(s"/api/subnets/$id"))
 
   def create(
     network_id: String,
     address_block: String,
     name: Option[String] = None
-  )(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Post("/api/subnets", FormData(Seq(
+  )(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
+    (pipeline ~> unmarshal[Subnet])(aux2)(Post("/api/subnets", FormData(Seq(
         "network_id" -> Some(network_id), 
         "address_block" -> Some(address_block), 
         "name" -> name
-  ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))
+    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))
 
-  def destroy(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Delete(s"/api/subnets/$id"))
+  def destroy(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
+    pipeline(Delete(s"/api/subnets/$id"))
+
 }

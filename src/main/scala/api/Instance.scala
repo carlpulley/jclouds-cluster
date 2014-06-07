@@ -30,6 +30,7 @@ import spray.client.pipelining._
 import xml.NodeSeq
 
 case class Instance(
+  id: String,
   realm_id: String,
   owner_id: String,
   image_id: String,
@@ -45,6 +46,7 @@ object Instance {
   import Address.xmlToAddress
   
   def xmlToInstance(data: NodeSeq): Instance = {
+    val id = (data \ "@id").text
     val state = (data \ "state").text
     val owner_id = (data \ "owner_id").text
     val realm_id = (data \ "realm" \ "@id").text
@@ -54,7 +56,7 @@ object Instance {
     val private_addresses = (data \ "private_addresses" \ "address").map(xmlToAddress).toList
     val actions = (data \ "actions" \ "link" \ "@rel").map(_.text).toList
   
-    Instance(realm_id, owner_id, image_id, hardware_profile_id, actions, state, public_addresses, private_addresses )
+    Instance(id, realm_id, owner_id, image_id, hardware_profile_id, actions, state, public_addresses, private_addresses )
   }
 
   implicit val unmarshalInstance = 
@@ -62,7 +64,7 @@ object Instance {
   
   implicit val unmarshalInstances = 
     Unmarshaller.delegate[NodeSeq, List[Instance]](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`) {   data =>
-      (data \ "instance").map(xmlToInstance(_)).toList
+      (data \ "instance").map(xmlToInstance).toList
     }
 
   def show(id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 

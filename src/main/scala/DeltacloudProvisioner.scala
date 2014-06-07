@@ -46,14 +46,17 @@ class DeltacloudProvisioner(label: String, joinAddress: Address)(implicit system
       Instance.create(
         image_id = "ami-84df3cec",
         keyname = Some("aws-ec2"),
-        realm_id = Some("us-east-1"),
+        realm_id = Some("us-east-1a"),
         hwp_id = Some("m3.medium"),
-        user_data = Some("touch /root/bootstrap") // FIXME:
-      ).map(action(_))
+        user_data = Some("""#!/bin/sh
+          |
+          |touch /root/bootstrap
+          |""".stripMargin) // FIXME:
+      ).map(action)
     }
   }
 
   def shutdown: Unit = {
-    node.map(n => Instance.destroy(n.image_id))
+    node.map(n => Instance.stop(n.id))
   }
 }

@@ -19,21 +19,48 @@ package api
 
 package deltacloud
 
+import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
 import spray.http._
+import spray.http.MediaTypes._
 import spray.http.Uri.Query
+import spray.httpx.TransformerAux.aux2
+import spray.httpx.unmarshalling._
 import spray.client.pipelining._
 import xml.NodeSeq
-import xml.NodeSeq
+
+case class Realm(
+  id: String,
+  state: String
+)
 
 object Realm {
+
+  def xmlToRealm(data: NodeSeq): Realm = {
+    val id = (data \ "@id").text
+    val state = (data \ "state").text
+  
+    Realm(id, state)
+  }
+
+  implicit val unmarshalRealm = 
+    Unmarshaller.delegate[NodeSeq, Realm](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`)(xmlToRealm)
+
+  implicit val unmarshalRealms = 
+    Unmarshaller.delegate[NodeSeq, List[Realm]](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`) { data => 
+      (data \ "realm").map(xmlToRealm).toList
+    }
+
   def index(
     id: Option[String] = None, 
     state: Option[String] = None
-  )(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Get(Uri("/api/realms").copy(query = Query(Map(
-    "id" -> id,
-    "state" -> state
-  ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))
+  )(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
+    (pipeline ~> unmarshal[List[Realm]])(aux2)(Get(Uri("/api/realms").copy(query = Query(Map(
+      "id" -> id,
+      "state" -> state
+    ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))
 
-  def show(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = pipeline(Get(s"/api/realms/$id"))
+  def show(id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
+    (pipeline ~> unmarshal[Realm])(aux2)(Get(s"/api/realms/$id"))
+
 }
