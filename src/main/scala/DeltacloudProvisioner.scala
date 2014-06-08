@@ -24,6 +24,7 @@ import cakesolutions.api.deltacloud.Instance
 import cakesolutions.api.deltacloud.Realm
 import com.typesafe.config.ConfigFactory
 import scala.concurrent.duration._
+import scala.io.Source
 import spray.can.Http
 import spray.http._
 import spray.client.pipelining._
@@ -44,19 +45,38 @@ class DeltacloudProvisioner(label: String, joinAddress: Address)(implicit system
 
   def bootstrap(action: Instance => Unit): Unit = {
     if (node.isEmpty) {
+      val vendor = config.getString("deltacloud.vendor")
+      val chef_client = config.getString("deltacloud.chef.validation.client_name")
+      val chef_validator = Scala.fromPath(config.getString("deltacloud.chef.validation.pem")).mkString
+
       for {
         realms <- Realm.index(state = Some("available"))
         vm <- Instance.create(
-          image_id = config.getString("deltacloud.ec2.image"),
-          keyname = Some(config.getString("deltacloud.ec2.keyname")),
+          image_id = config.getString(s"deltacloud.$vendor.image"),
+          keyname = Some(config.getString(s"deltacloud.$vendor.keyname")),
           realm_id = Some(realms.head.id),
           hwp_id = Some("m3.medium"),
-          user_data = Some("""#!/bin/bash
+          user_data = Some(s"""#!/bin/bash
             |
-            |curl -L https://www.opscode.com/chef/install.sh | bash
+            |curl -L https://www.opscode.com/chef/install.sh -o /tmp/chef-install.sh
+            |bash /tmp/chef-install.sh
             |mkdir /etc/chef
-            |# FIXME: need to add in chef pem file and minimal client.rb
-            |# FIXME: need to setup first-boot.json
+            |cat >/etc/chef/$chef_client <<PEM
+            |$chef_validator
+            |PEM
+            |cat > /etc/chef/first-boot.json <<JSON
+            |{
+            | "run_list": [
+            |   "recipe[apt]",
+            |   "recipe[java]",
+            |   "recipe[cluster]"
+            | ],
+            | "override_attributes": {
+            |   "java": { "jdk_version": "7" },
+            |   "cluster": { "role": "$label", "seedNode": "${joinAddress.toString}" }
+            | }
+            |}
+            |JSON
             |/usr/bin/chef-client -j /etc/chef/first-boot.json
             |""".stripMargin)
         )
