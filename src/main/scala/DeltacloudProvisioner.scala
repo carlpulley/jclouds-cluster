@@ -45,17 +45,17 @@ class DeltacloudProvisioner(label: String, joinAddress: Address)(implicit system
 
   def bootstrap(action: Instance => Unit): Unit = {
     if (node.isEmpty) {
-      val vendor = config.getString("deltacloud.vendor")
+      val driver = config.getString("deltacloud.driver")
       val chef_client = config.getString("deltacloud.chef.validation.client_name")
       val chef_validator = Scala.fromPath(config.getString("deltacloud.chef.validation.pem")).mkString
 
       for {
         realms <- Realm.index(state = Some("available"))
         vm <- Instance.create(
-          image_id = config.getString(s"deltacloud.$vendor.image"),
-          keyname = Some(config.getString(s"deltacloud.$vendor.keyname")),
+          image_id = config.getString(s"deltacloud.$driver.image"),
+          keyname = Some(config.getString(s"deltacloud.$driver.keyname")),
           realm_id = Some(realms.head.id),
-          hwp_id = Some("m3.medium"),
+          hwp_id = Some(config.getString(s"deltacloud.$driver.hwp")),
           user_data = Some(s"""#!/bin/bash
             |
             |curl -L https://www.opscode.com/chef/install.sh -o /tmp/chef-install.sh

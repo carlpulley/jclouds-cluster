@@ -31,7 +31,6 @@ module Deltacloud
         VBOX_MANAGE_PATH = '/usr/bin'
 
         feature :instances, :user_name
-        feature :instances, :authentication_key
         feature :instances, :authentication_password
         feature :instances, :user_files
         feature :instances, :user_data
@@ -40,36 +39,48 @@ module Deltacloud
         feature :storage_volumes, :volume_name
         feature :storage_volumes, :volume_description
 
+        define_hardware_profile 'micro' do
+          cpu           1
+          memory        512
+          storage       1
+          architecture  `uname -m`.strip
+        end
+
         define_hardware_profile 'small' do
           cpu           1
-          memory        0.5
+          memory        1024
           storage       1
           architecture  `uname -m`.strip
         end
         
         define_hardware_profile 'medium' do
-          cpu           1
-          memory        1
+          cpu           2
+          memory        2048
           storage       1
           architecture  `uname -m`.strip
         end
  
         define_hardware_profile 'large' do
-          cpu           2
-          memory        2
+          cpu           4
+          memory        4096
           storage       1
+          architecture  `uname -m`.strip
+        end
+ 
+        define_hardware_profile 'custom' do
           architecture  `uname -m`.strip
         end
 
         define_instance_states do
-          create.to( :pending)    .automatically
-          pending.to(:start)      .automatically
-          start.to( :running )    .on( :create )
-          running.to( :running )  .on( :reboot )
-          running.to( :paused )   .on( :stop )
-          running.to(:finish)     .on( :destroy )
-          paused.to( :running )   .on( :start )
-          poweroff.to( :start )   .on( :start)
+          start.to(:pending)    .on(:start)
+          start.to(:finish)     .on(:destroy)
+          pending.to(:running)  .automatically
+          running.to(:running)  .on(:reboot)
+          running.to(:stopping) .on(:stop)
+          running.to(:finish)   .on(:destroy)
+          stopping.to(:stopped) .automatically
+          stopped.to(:running)  .on(:start)
+          stopped.to(:finish)   .on(:destroy)
         end
 
         def images(credentials, opts = nil)
@@ -79,51 +90,49 @@ module Deltacloud
           images.sort_by{|e| [e.owner_id, e.description]}
         end
 
+        def destroy_image(credentials, image_id)
+          vbox_client("unregistervm '#{image_id}' --delete")
+        end
+
         def realms(credentials, opts={})
-          return Realm.new({
+          return [Realm.new({
             :id => 'local',
             :name => 'localhost',
-            :limit => 100,
+            :limit => 'unlimited',
             :state => 'AVAILABLE'
-          })
+          })]
         end
  
         # TODO: use user_data when booting - see http://cloudinit.readthedocs.org/en/latest/topics/datasources.html#no-cloud
         def create_instance(credentials, image_id, opts)
           instance = instances(credentials, { :image_id => image_id }).first
           name = opts[:name] || "#{instance.name} - #{Time.now.to_i}"
- 
+
           # Create new virtual machine, UUID for this machine is returned
           vm=vbox_client("createvm --name '#{name}' --register")
           new_uid = vm.split("\n").select { |line| line=~/^UUID/ }.first.split(':').last.strip
           
           # Add Hardware profile to this machine
-          memory = 0.5
-          ostype = "Linux"
-          cpu = '1'
+          profile = hardware_profile(credentials, opts[:hwp_id] || "small")
+          cpu = profile.cpu
+          memory = profile.memory
+          ostype = profile.id == 'microsoft' ? "Windows" : "Linux"
  
-          if opts[:flavor_id]
-            flavor = FLAVORS.select { |f| f.id == opts[:flavor_id]}.first
-            memory = flavor.memory
-            ostype = "Windows" if flavor.id == 'microsoft'
-            cpu = "#{flavor.cpu}"
-          end
- 
-          memory = ((memory*1.024)*1000).to_i
- 
-          vbox_client("modifyvm '#{new_uid}' --ostype #{ostype} --memory #{memory} --vram 16 --nic1 bridged --bridgeadapter eth0 --cableconnected1 on --cpus #{cpu}")
- 
+          vbox_client("modifyvm '#{new_uid}' --ostype #{ostype} --memory #{memory} --vram 16 --nic1 nat --cableconnected1 on --cpus #{cpu}")
+
           # Add storage
           # This will 'reuse' existing image
           location = instance_volume_location(instance.id)
           new_location = File.join(File.dirname(location), name+'.vdi')
- 
-          # This need to be in fork, because it takes some time with large images
+
+          # This need to be in a fork, because it takes some time with large images
           fork do
             vbox_client("clonehd '#{location}' '#{new_location}' --format VDI")
             vbox_client("storagectl '#{new_uid}' --add ide --name '#{name}'-hd0 --controller PIIX4")
             vbox_client("storageattach '#{new_uid}' --storagectl '#{name}'-hd0 --port 0 --device 0 --type hdd --medium '#{new_location}'")
           end
+          
+          convert_instance(new_uid, image_id)
         end
 
         # TODO: run_on_instance?
@@ -134,12 +143,13 @@ module Deltacloud
   
         def destroy_instance(credentials, id)
           vbox_client("controlvm '#{id}' poweroff")
+          vbox_client("unregistervm '#{id}' --delete")
         end
 
         def start_instance(credentials, id)
           instance = instances(credentials, { :id => id }).first
           # Handle 'pause' and 'poweroff' state differently
-          if 'POWEROFF'.eql?(instance.state)
+          if 'START'.eql?(instance.state)
             vbox_client("startvm '#{id}'")
           else
             vbox_client("controlvm '#{id}' resume")
@@ -149,7 +159,7 @@ module Deltacloud
         def stop_instance(credentials, id)
           vbox_client("controlvm '#{id}' pause")
         end
-   
+
         def instances(credentials, opts = nil)
           instances = convert_instances(vbox_client('list vms'))
           instances = filter_on( instances, :id, opts )
@@ -163,11 +173,24 @@ module Deltacloud
           require 'pp'
           instances(credentials, {}).each do |image|
             raw_image = convert_image(vbox_vm_info(image.id))
-            hdd_id = raw_image['ide controller-imageuuid-0-0'.to_sym]
+            hdd_id = raw_image[bootdisk(raw_image)]
             next unless hdd_id
-            volumes << convert_volume(vbox_client("showhdinfo '#{hdd_id}'"))
+            volume = convert_volume(vbox_client("showhdinfo '#{hdd_id}'"))
+            volumes << volume unless volume.nil?
           end
           filter_on( volumes, :id, opts )
+        end
+
+        def create_storage_volume(credentials, opts=nil)
+          # TODO:
+        end
+
+        def detach_storage_volume(credentials, opts={})
+          # TODO:
+        end
+
+        def create_storage_snapshot(credentials, opts={})
+          # TODO:
         end
  
         private
@@ -180,23 +203,49 @@ module Deltacloud
           vbox_client("showvminfo --machinereadable '#{uid}'")
         end
  
+        def vm_hdd_uses(uid)
+          imgs = []
+          vbox_client("list hdds -l").split(/\n\n/).each do |image|
+            volume = convert_raw_volume(image)
+            imgs << volume[:uuid] if volume[:"in-use-by-vms"] == uid
+          end
+          imgs
+        end
+
+        def convert_instance(image_id, base_image_id = nil)
+          raw_image = convert_image(vbox_vm_info(image_id))
+          volume = convert_volume(vbox_get_volume(raw_image[bootdisk(raw_image)]))
+          hwprof = self.class.hardware_profiles.find { |hwp| hwp.property("cpu") && hwp.property("cpu").value == raw_image[:cpus].to_i && hwp.property("memory") && hwp.property("memory").value == raw_image[:memory].to_i }
+          if hwprof.nil?
+            profile = InstanceProfile.new("custom")
+            profile.cpu = raw_image[:cpus]
+            profile.memory = raw_image[:memory]
+          else
+            profile = InstanceProfile.new(hwprof.id)
+          end
+          profile.storage = volume.capacity if volume
+
+          Instance.new({
+            :id => image_id,
+            :image_id => base_image_id || image_id, # FIXME: need to save base_image_id upon creation
+            :name => raw_image[:name],
+            :state => convert_state(raw_image[:vmstate], volume),
+            :owner_id => ENV['USER'] || ENV['USERNAME'] || 'nobody',
+            :realm_id => 'local',
+            :public_addresses => vbox_get_ip(image_id),
+            :private_addresses => vbox_get_ip(image_id),
+            :actions => instance_actions_for(convert_state(raw_image[:vmstate], volume)),
+            :instance_profile => profile,
+            :storage_volumes => vm_hdd_uses(image_id).map { |vol| { vol => image_id } },
+            :launch_time => raw_image[:vmstatechangetime]
+          })
+        end
+
         def convert_instances(instances)
           vms = []
           instances.split("\n").each do |image|
             image_id = image.match(/^\"(.+)\" \{(.+)\}$/).to_a.last
-            raw_image = convert_image(vbox_vm_info(image_id))
-            volume = convert_volume(vbox_get_volume(raw_image['ide controller-imageuuid-0-0'.to_sym]))
-            vms << Instance.new({
-              :id => raw_image[:uuid],
-              :image_id => volume ? raw_image[:uuid] : '',
-              :name => raw_image[:name],
-              :state => convert_state(raw_image[:vmstate], volume),
-              :owner_id => ENV['USER'] || ENV['USERNAME'] || 'nobody',
-              :realm_id => 'local',
-              :public_addresses => vbox_get_ip(raw_image[:uuid]),
-              :private_addresses => vbox_get_ip(raw_image[:uuid]),
-              :actions => instance_actions_for(convert_state(raw_image[:vmstate], volume))
-            })
+            vms << convert_instance(image_id)
           end
           return vms
         end
@@ -208,7 +257,7 @@ module Deltacloud
           if raw_ip.eql?('No value set!')
             return []
           else
-            return [raw_ip]
+            return [InstanceAddress.new(raw_ip)]
           end
         end
  
@@ -217,7 +266,22 @@ module Deltacloud
         end
  
         def convert_state(state, volume)
-          volume.nil? ? 'PENDING' : state.strip.upcase
+          if volume.nil? 
+            'PENDING'
+          else
+            case state.strip.upcase
+            when 'POWEROFF'
+              'START'
+            when 'ABORTED'
+              'STOPPED'
+            when 'SAVED'
+              'STOPPED'
+            when 'PAUSED'
+              'STOPPED'
+            else
+              state.strip.upcase
+            end
+          end
         end
  
         def convert_image(image)
@@ -230,7 +294,8 @@ module Deltacloud
         end
  
         def instance_volume_location(instance_id)
-          volume_uuid = convert_image(vbox_vm_info(instance_id))['ide controller-imageuuid-0-0'.to_sym]
+          raw_image = convert_image(vbox_vm_info(instance_id))
+          volume_uuid = raw_image[bootdisk(raw_image)]
           convert_raw_volume(vbox_get_volume(volume_uuid))[:location]
         end
  
@@ -239,7 +304,12 @@ module Deltacloud
           volume.split("\n").each do |v|
             v = v.split(':')
             next unless v.first
-            vol[:"#{v.first.strip.downcase.gsub(/\W/, '-')}"] = v.last.strip
+            key = v.first.strip.downcase.gsub(/\W/, '-')
+            value = v.last.strip
+            vol[:"#{key}"] = value
+            if key == "in-use-by-vms" && value[-1] == ')'
+              vol[:"#{key}"] = value[0...-1]
+            end
           end
           return vol
         end
@@ -247,33 +317,58 @@ module Deltacloud
         def convert_volume(volume)
           vol = convert_raw_volume(volume)
           return nil unless vol[:uuid]
+          c = vol["capacity".to_sym].split(' ')
+          toGB = case c[1]
+          when "KBytes"
+            1000000
+          when "MBytes"
+            1000
+          else
+            1
+          end
+          capacity = c[0].to_f / toGB
           StorageVolume.new(
             :id => vol[:uuid],
             :created => Time.now,
             :state => 'AVAILABLE',
-            :capacity => vol["logical-size".to_sym],
+            :capacity => '%.2f' % capacity,
             :instance_id => vol["in-use-by-vms".to_sym],
-            :device => vol[:type]
+            :device => vol[:type],
+            :realm_id => "local"
           )
         end
- 
+
         def convert_images(images)
           vms = []
           images.split("\n").each do |image|
             image_id = image.match(/^\"(.+)\" \{(.+)\}$/).to_a.last
             raw_image = convert_image(vbox_vm_info(image_id))
-            volume = convert_volume(vbox_get_volume(raw_image['ide controller-imageuuid-0-0'.to_sym]))
+            volume = convert_volume(vbox_get_volume(raw_image[bootdisk(raw_image)]))
             next unless volume
             capacity = ", #{volume.capacity} HDD"
             vms << Image.new(
               :id => raw_image[:uuid],
               :name => raw_image[:name],
+              :state => raw_image[:vmstate],
               :description => "#{raw_image[:memory]} MB RAM, #{raw_image[:cpu] || 1} CPU#{capacity}",
               :owner_id => ENV['USER'] || ENV['USERNAME'] || 'nobody',
-              :architecture => `uname -m`.strip
+              :architecture => `uname -m`.strip,
+              :hardware_profiles => self.class.hardware_profiles.select { |hwp| hwp.name != "custom" }
             )
           end
           return vms
+        end
+
+        def bootdisk(image)
+          controller_names = image.keys.select { |k| /^storagecontrollername\d$/ =~ k.to_s }
+          for name in controller_names
+            controllers = image.select { |k, v| Regexp.new("^#{image[name].downcase}-\\d-\\d$") =~ k && v != "none" }
+            for controller in controllers.keys
+              slot = controller[-3..-1]
+              return "#{image[name].downcase}-imageuuid-#{slot}".to_sym if /\.vdi$/ =~ image[controller] || /\.vmdk$/ =~ image[controller]
+            end
+          end
+          nil
         end
 
       end
