@@ -23,6 +23,8 @@
 # 3. You need to install 'Guest Additions' to this images for metrics
 # 4. You need a lot of hard drive space ;-)
 
+require 'tmpdir'
+
 module Deltacloud
   module Drivers
     module Virtualbox
@@ -130,6 +132,8 @@ module Deltacloud
             vbox_client("clonehd '#{location}' '#{new_location}' --format VDI")
             vbox_client("storagectl '#{new_uid}' --add ide --name '#{name}'-hd0 --controller PIIX4")
             vbox_client("storageattach '#{new_uid}' --storagectl '#{name}'-hd0 --port 0 --device 0 --type hdd --medium '#{new_location}'")
+
+            add_user_data(new_uid, opts[:user_data]) if opts[:user_data]
           end
           
           convert_instance(new_uid, image_id)
@@ -194,6 +198,40 @@ module Deltacloud
         end
  
         private
+
+        def genisoimage(src)
+          iso = "#{Dir.mktmpdir}/nocloud.iso"
+          case RbConfig::CONFIG['target_os']
+          when /^darwin/
+            `hdiutil makehybrid -iso -joliet -o #{iso} #{src}`
+          else
+            `genisoimage -output #{iso} -volid cidata -joliet -rock #{src}`
+          end
+          iso
+        end
+
+        def add_user_data(uuid, user_data)
+          Dir.mktmpdir do |dir|
+            open("#{dir}/meta-data", "w") { |fd| fd.write("local-hostname: localhost") }
+            open("#{dir}/user-data", "w") { |fd| fd.write(user_data) }
+            iso = genisoimage(dir)
+            raw_image = convert_image(vbox_vm_info(uuid))
+            name = raw_image.select { |k, v| /^storagecontrollertype\d$/ =~ k && ["PIIX3", "PIIX4", "ICH6"].member?(v) }.map { |k, v| k }.first
+            if name.empty?
+              controller = "IDE Controller"
+              vbox_client("storagectl '#{uuid}' --name '#{controller}' --add ide")
+            else
+              n = name[-1]
+              controller = raw_image[:"storagecontrollername#{n}"]
+            end
+            slot = raw_image.select { |k,v| Regexp.new("^#{controller}-\\d-\\d$") =~ k && v == "none" }.map { |k, v| k }.first.to_s
+            unless slot.nil?
+              device = slot.split("-")[-1]
+              port = slot.split("-")[-2]
+              vbox_client("storageattach '#{uuid}' --storagectl '#{controller}' --port #{port} --device #{device} --type dvddrive --medium '#{iso}'")
+            end
+          end
+        end
  
         def vbox_client(cmd)
           `#{VBOX_MANAGE_PATH}/VBoxManage -q #{cmd}`.strip
