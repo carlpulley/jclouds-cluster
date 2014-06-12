@@ -23,6 +23,8 @@
 # 3. You need to install 'Guest Additions' to this images for metrics
 # 4. You need a lot of hard drive space ;-)
 
+require 'thread/pool'
+require 'thread/future'
 require 'tmpdir'
 
 module Deltacloud
@@ -31,6 +33,10 @@ module Deltacloud
       class VirtualboxDriver < Deltacloud::BaseDriver
 
         VBOX_MANAGE_PATH = '/usr/bin'
+
+        HEADLESS = false # setting this to be true will launch headless VMs
+
+        POOL = Thread.pool 10
 
         feature :instances, :user_name
         feature :instances, :authentication_password
@@ -128,7 +134,7 @@ module Deltacloud
           new_location = File.join(File.dirname(location), name+'.vdi')
 
           # This need to be in a fork, because it takes some time with large images
-          fork do
+          POOL.process do
             vbox_client("clonehd '#{location}' '#{new_location}' --format VDI")
             vbox_client("storagectl '#{new_uid}' --add ide --name '#{name}'-hd0 --controller PIIX4")
             vbox_client("storageattach '#{new_uid}' --storagectl '#{name}'-hd0 --port 0 --device 0 --type hdd --medium '#{new_location}'")
@@ -154,7 +160,7 @@ module Deltacloud
           instance = instances(credentials, { :id => id }).first
           # Handle 'pause' and 'poweroff' state differently
           if 'START'.eql?(instance.state)
-            vbox_client("startvm '#{id}'")
+            vbox_client("startvm '#{id}' #{HEADLESS ? "--type headless" : ""}")
           else
             vbox_client("controlvm '#{id}' resume")
           end
@@ -210,10 +216,11 @@ module Deltacloud
           iso
         end
 
-        def add_user_data(uuid, user_data)
+        def add_user_data(uuid, user_data, vendor_data=nil)
           Dir.mktmpdir do |dir|
-            open("#{dir}/meta-data", "w") { |fd| fd.write("local-hostname: localhost") }
+            open("#{dir}/meta-data", "w") { |fd| fd.write("instance-id: iid-local01\nlocal-hostname: localhost\n") }
             open("#{dir}/user-data", "w") { |fd| fd.write(user_data) }
+            open("#{dir}/vendor-data", "w") { |fd| fd.write(vendor_data) } unless vendor_data.nil?
             iso = genisoimage(dir)
             raw_image = convert_image(vbox_vm_info(uuid))
             name = raw_image.select { |k, v| /^storagecontrollertype\d$/ =~ k && ["PIIX3", "PIIX4", "ICH6"].member?(v) }.map { |k, v| k }.first
