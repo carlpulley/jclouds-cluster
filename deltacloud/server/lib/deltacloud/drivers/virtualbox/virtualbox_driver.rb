@@ -209,7 +209,7 @@ module Deltacloud
           iso = "#{Dir.mktmpdir}/nocloud.iso"
           case RbConfig::CONFIG['target_os']
           when /^darwin/
-            `hdiutil makehybrid -iso -joliet -o #{iso} #{src}`
+            `hdiutil makehybrid -iso -default-volume-name cidata -joliet -o #{iso} #{src}`
           else
             `genisoimage -output #{iso} -volid cidata -joliet -rock #{src}`
           end
@@ -297,12 +297,17 @@ module Deltacloud
  
         # Warning: You need VirtualHost guest additions for this
         def vbox_get_ip(uuid)
-          raw_ip = vbox_client("guestproperty get #{uuid} /VirtualBox/GuestInfo/Net/0/V4/IP")
-          raw_ip = raw_ip.split(':').last.strip
-          if raw_ip.eql?('No value set!')
+          begin
+            raw_ip = vbox_client("guestproperty get #{uuid} /VirtualBox/GuestInfo/Net/0/V4/IP")
+            raw_ip = raw_ip.split(':').last.strip
+            if raw_ip.eql?('No value set!')
+              return []
+            else
+              return [InstanceAddress.new(raw_ip)]
+            end
+          rescue
+            puts "ERROR: do you need to install VirtualHost guest additions?"
             return []
-          else
-            return [InstanceAddress.new(raw_ip)]
           end
         end
  
