@@ -70,6 +70,8 @@ class DeltacloudProvisioner(label: String, joinAddress: Address)(implicit system
           hwp_id = Some(config.getString(s"deltacloud.$driver.hwp")),
           user_data = Some(s"""#cloud-config
             |
+            |hostname: $label
+            |
             |password: "$user_password"
             |
             |ssh_authorized_keys:

@@ -36,6 +36,8 @@ module Deltacloud
 
         HEADLESS = false # setting this to be true will launch headless VMs
 
+        NIC_BRIDGE = nil # to use network bridging, edit this to contain your NIC
+
         POOL = Thread.pool 10
 
         feature :instances, :user_name
@@ -131,14 +133,18 @@ module Deltacloud
           memory = profile.memory
           ostype = profile.id == 'microsoft' ? "Windows" : "Linux"
  
-          # We ensure networking is setup with DHCP (here we use a NAT/internal network hybrid)
-          networks = list_networks()
-          if networks.select { |nwk| nwk[:name] == "deltacloud-nat" }.empty?
-            vbox_client("natnetwork add -t deltacloud-nat -n '192.168.42.0/24' -e -h on")
-            vbox_client("natnetwork start -t deltacloud-nat")
-          end
+          if NIC_BRIDGE.nil?
+            # We ensure NAT networking is setup with DHCP (here we use a NAT/internal network hybrid)
+            networks = list_networks()
+            if networks.select { |nwk| nwk[:name] == "deltacloud-nat" }.empty?
+              vbox_client("natnetwork add -t deltacloud-nat -n '192.168.42.0/24' -e -h on")
+              vbox_client("natnetwork start -t deltacloud-nat")
+            end
 
-          vbox_client("modifyvm '#{new_uid}' --ostype #{ostype} --memory #{memory} --vram 16 --nic1 intnet --intnet1 deltacloud-nat --cableconnected1 on --macaddress1 auto --cpus #{cpu}")
+            vbox_client("modifyvm '#{new_uid}' --ostype #{ostype} --memory #{memory} --vram 16 --nic1 intnet --intnet1 deltacloud-nat --cableconnected1 on --macaddress1 auto --cpus #{cpu}")
+          else
+            vbox_client("modifyvm '#{new_uid}' --ostype #{ostype} --memory #{memory} --vram 16 --nic1 bridged --bridgeadapter1 #{NIC_BRIDGE} --cableconnected1 on --macaddress1 auto --cpus #{cpu}")
+          end
 
           # Add storage
           # This will 'reuse' existing image
@@ -152,8 +158,10 @@ module Deltacloud
             vbox_client("storageattach '#{new_uid}' --storagectl '#{name.downcase}'-hd0 --port 0 --device 0 --type hdd --medium '#{new_location}'")
 
             add_user_data(new_uid, opts[:user_data]) if opts[:user_data]
+
+            start_instance(credentials, new_uid)
           end
-          
+
           convert_instance(new_uid, image_id)
         end
 
