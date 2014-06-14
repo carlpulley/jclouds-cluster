@@ -37,7 +37,7 @@ class RackspaceProvisioner(role: String, seedNode: Address) extends vendor.Racks
 
   chef_runlist
     .addRecipe("java")
-    .addRecipe("cluster")
+    .addRecipe("cluster@0.1.7")
 
   chef_attributes += ("java" -> ("jdk_version" -> "7"))
   chef_attributes += ("cluster" -> ("role" -> role) ~ ("seedNode" -> seedNode.toString))
@@ -53,7 +53,7 @@ class AmazonProvisioner(role: String, seedNode: Address) extends vendor.AwsEc2.U
 
   chef_runlist
     .addRecipe("java")
-    .addRecipe("cluster")
+    .addRecipe("cluster@0.1.7")
 
   chef_attributes += ("java" -> ("jdk_version" -> "7"))
   chef_attributes += ("cluster" -> ("role" -> role) ~ ("seedNode" -> seedNode.toString))
