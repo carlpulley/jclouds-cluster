@@ -20,7 +20,7 @@ import com.typesafe.sbt.SbtNativePackager._
 import NativePackagerKeys._
 
 trait Resolvers {
-  val JCloudResolvers = Seq(
+  val DeltaCloudResolvers = Seq(
     "Java.net" at "http://download.java.net/maven/2/",
     "Maven Central" at "http://repo1.maven.org/",
     "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/",
@@ -34,8 +34,6 @@ trait Resolvers {
 object V {
   val AKKA = "2.3.3"
   val CONFIG = "1.2.1"
-  val JCLOUDS = "1.7.2"
-  val LIFT = "2.5.1"
   val LOG4J = "1.2.17"
   val SCALA = "2.10.2"
   val SCALACHECK = "1.11.4"
@@ -64,27 +62,29 @@ trait Dependencies {
 
   val Miscellaneous = Seq(
     // Configuration
-    "com.typesafe" % "config" % V.CONFIG,
-    // JSON (used to configure Chef)
-    "net.liftweb" %% "lift-json" % V.LIFT
+    "com.typesafe" % "config" % V.CONFIG
   )
 }
 
-object JCloudBuild extends Build with Resolvers with Dependencies {
-  lazy val JCloudSettings = Defaults.defaultSettings ++ packageArchetype.java_server ++ Seq(
+object DeltaCloudBuild extends Build with Resolvers with Dependencies {
+  lazy val DeltaCloudSettings = Defaults.defaultSettings ++ packageArchetype.java_server ++ Seq(
     organization := "CakeSolutions",
     version := "1.0",
     scalaVersion := V.SCALA,
     shellPrompt := { st => Project.extract(st).currentProject.id + "> " },
     autoCompilerPlugins := true,
-    resolvers := JCloudResolvers,
+    resolvers := DeltaCloudResolvers,
     libraryDependencies := Akka ++ Spray ++ Miscellaneous,
     checksums := Seq("sha1", "md5"),
     scalacOptions ++= Seq("-deprecation", "-unchecked", "-feature", "-language:experimental.macros"),
     javacOptions ++= Seq("-Xlint:unchecked", "-Xlint:deprecation"),
     javaOptions ++= Seq("-Xms256M", "-Xmx1024M", "-XX:+UseParallelGC"),
     parallelExecution in Test := false,
-    mainClass in Compile := Some("cakesolutions.example.WorkerNode"),
+    mainClass in Compile := Some("akka.kernel.Main"),
+    bashScriptExtraDefines += """addApp "cakesolutions.example.WorkerNode" """,
+    // These tokens are replaced in the start script when the Chef provisioner runs
+    bashScriptExtraDefines += """addJava "-Dakka.cluster.roles.1={{ROLE}}" """,
+    bashScriptExtraDefines += """addJava "-Dakka.cluster.seed-nodes.1={{SEEDNODE}}" """,
     packageDescription := "Ping-Pong Application (Clustered)",
     packageSummary in Linux := "Ping-Pong Application (Clustered)",
     maintainer in Linux := "Carl Pulley",
@@ -96,12 +96,16 @@ object JCloudBuild extends Build with Resolvers with Dependencies {
     rpmLicense := Some("GPLv3+"),
     rpmGroup := Some("group"),
     rpmBrpJavaRepackJars := true,
+    // Ensure that we do not pack the deltacloud.conf resource!
+    mappings in (Compile, packageBin) ~= { _.filterNot { case (_, name) =>
+      Seq("deltacloud.conf").contains(name)
+    }},
     initialCommands in console := "import cakesolutions.example._; import cakesolutions.example.ClusterMessages._"
   )
   
   lazy val root = Project(
     id = "cluster",
     base = file("."),
-    settings = JCloudSettings
+    settings = DeltaCloudSettings
   )
 }

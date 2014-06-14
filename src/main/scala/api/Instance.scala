@@ -106,7 +106,7 @@ object Instance {
         "keyname" -> keyname, 
         "realm_id" -> realm_id, 
         "hwp_id" -> hwp_id, 
-        "user_data" -> user_data.map(ud => new sun.misc.BASE64Encoder().encode(ud.getBytes())), 
+        "user_data" -> user_data, 
         "user_files" -> user_files, 
         "user_iso" -> user_iso, 
         "firewalls" -> Some(firewalls.toString),

@@ -113,8 +113,13 @@ module Deltacloud
  
         # TODO: use user_data when booting - see http://cloudinit.readthedocs.org/en/latest/topics/datasources.html#no-cloud
         def create_instance(credentials, image_id, opts)
-          instance = instances(credentials, { :image_id => image_id }).first
-          name = opts[:name] || "#{instance.name} - #{Time.now.to_i}"
+          imgs = instances(credentials, { :image_id => image_id })
+          if imgs.empty?
+            puts "ERROR: failed to locate any image with the UUID #{image_id}"
+            return
+          end
+          instance = imgs.first
+          name = opts[:name] || "deltacloud-#{Time.now.to_i}"
 
           # Create new virtual machine, UUID for this machine is returned
           vm=vbox_client("createvm --name '#{name}' --register")
@@ -126,7 +131,14 @@ module Deltacloud
           memory = profile.memory
           ostype = profile.id == 'microsoft' ? "Windows" : "Linux"
  
-          vbox_client("modifyvm '#{new_uid}' --ostype #{ostype} --memory #{memory} --vram 16 --nic1 nat --cableconnected1 on --cpus #{cpu}")
+          # We ensure networking is setup with DHCP (here we use a NAT/internal network hybrid)
+          networks = list_networks()
+          if networks.select { |nwk| nwk[:name] == "deltacloud-nat" }.empty?
+            vbox_client("natnetwork add -t deltacloud-nat -n '192.168.42.0/24' -e -h on")
+            vbox_client("natnetwork start -t deltacloud-nat")
+          end
+
+          vbox_client("modifyvm '#{new_uid}' --ostype #{ostype} --memory #{memory} --vram 16 --nic1 intnet --intnet1 deltacloud-nat --cableconnected1 on --macaddress1 auto --cpus #{cpu}")
 
           # Add storage
           # This will 'reuse' existing image
@@ -136,8 +148,8 @@ module Deltacloud
           # This need to be in a fork, because it takes some time with large images
           POOL.process do
             vbox_client("clonehd '#{location}' '#{new_location}' --format VDI")
-            vbox_client("storagectl '#{new_uid}' --add ide --name '#{name}'-hd0 --controller PIIX4")
-            vbox_client("storageattach '#{new_uid}' --storagectl '#{name}'-hd0 --port 0 --device 0 --type hdd --medium '#{new_location}'")
+            vbox_client("storagectl '#{new_uid}' --add ide --name '#{name.downcase}'-hd0 --controller PIIX4")
+            vbox_client("storageattach '#{new_uid}' --storagectl '#{name.downcase}'-hd0 --port 0 --device 0 --type hdd --medium '#{new_location}'")
 
             add_user_data(new_uid, opts[:user_data]) if opts[:user_data]
           end
@@ -205,6 +217,19 @@ module Deltacloud
  
         private
 
+        def list_networks()
+          raw_data = vbox_client("list natnetworks")
+          networks = []
+          raw_data.split("NetworkName:").select { |l| !l.empty? }.each do |data|
+            nwk = data.split("\n")
+            network_id = nwk[0].strip
+            gateway = nwk[1].split(':')[1].strip
+            network = nwk[2].split(':')[1].strip
+            networks << { :name => network_id, :gateway => gateway, :network => network }
+          end
+          return networks
+        end
+
         def genisoimage(src)
           iso = "#{Dir.mktmpdir}/nocloud.iso"
           case RbConfig::CONFIG['target_os']
@@ -218,11 +243,11 @@ module Deltacloud
 
         def add_user_data(uuid, user_data, vendor_data=nil)
           Dir.mktmpdir do |dir|
-            open("#{dir}/meta-data", "w") { |fd| fd.write("instance-id: iid-local01\nlocal-hostname: localhost\n") }
+            raw_image = convert_image(vbox_vm_info(uuid))
+            open("#{dir}/meta-data", "w") { |fd| fd.write("instance-id: #{raw_image[:name].gsub(/\s+/, '-')}\nlocal-hostname: localhost\n") }
             open("#{dir}/user-data", "w") { |fd| fd.write(user_data) }
             open("#{dir}/vendor-data", "w") { |fd| fd.write(vendor_data) } unless vendor_data.nil?
             iso = genisoimage(dir)
-            raw_image = convert_image(vbox_vm_info(uuid))
             name = raw_image.select { |k, v| /^storagecontrollertype\d$/ =~ k && ["PIIX3", "PIIX4", "ICH6"].member?(v) }.map { |k, v| k }.first
             if name.empty?
               controller = "IDE Controller"
