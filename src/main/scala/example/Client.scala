@@ -32,6 +32,7 @@ import akka.cluster.MemberStatus
 import akka.remote.RemoteScope
 import cakesolutions.api.deltacloud.Instance
 import com.typesafe.config.ConfigFactory
+import scala.concurrent.Future
 import scala.sys.process._
 import scala.util.Random
 
@@ -99,9 +100,12 @@ class ClientNode(nodes: Set[String]) extends Client[String] {
   }
 
   def shutdown = {
-    for((node, _) <- machines) {
-      node.shutdown
+    import system.dispatcher
+
+    Future.sequence(machines.keys.map(_.shutdown)).onSuccess { 
+      case _ =>
+        machines = Map.empty[DeltacloudProvisioner, Instance]
+        system.shutdown
     }
-    system.shutdown
   }
 }

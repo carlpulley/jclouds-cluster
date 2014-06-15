@@ -24,7 +24,10 @@ import cakesolutions.api.deltacloud.Instance
 import cakesolutions.api.deltacloud.Realm
 import com.typesafe.config.ConfigFactory
 import scala.concurrent.duration._
+import scala.concurrent.Future
 import scala.io.Source
+import scala.util.Failure
+import scala.util.Success
 import spray.can.Http
 import spray.http._
 import spray.client.pipelining._
@@ -36,7 +39,7 @@ class DeltacloudProvisioner(label: String, joinAddress: Address)(implicit system
   val host = config.getString("deltacloud.host")
   val port = config.getInt("deltacloud.port")
 
-  implicit val timeout = Timeout(config.getInt("deltacloud.timeout").seconds)
+  implicit val timeout = Timeout(config.getInt("deltacloud.timeout").minutes)
 
   implicit val pipeline = (request: HttpRequest) => 
     (IO(Http) ? (request, Http.HostConnectorSetup(host, port = port))).mapTo[HttpResponse]
@@ -63,7 +66,7 @@ class DeltacloudProvisioner(label: String, joinAddress: Address)(implicit system
         try { 
           Some(Source.fromFile(s"${config.getString("user.home")}/.ssh/$ssh_keyname.pub").mkString) 
         } catch {
-          case _: throwable => None
+          case _: Throwable => None
         }
       val ssh_authorized_keys = ssh_key.map(key => 
         s"""ssh_authorized_keys:
@@ -125,7 +128,19 @@ class DeltacloudProvisioner(label: String, joinAddress: Address)(implicit system
     }
   }
 
-  def shutdown: Unit = {
-    node.map(n => Instance.destroy(n.id))
+  def shutdown: Future[Unit] = { 
+    node match {
+      case Some(n) =>
+        (for {
+          _ <- Instance.stop(n.id)
+          _ <- Instance.destroy(n.id)
+        } yield ()).recover {
+          case exn =>
+            println(s"ERROR: $exn")
+        }
+  
+      case None =>
+        Future { () }
+    }
   }
 }
