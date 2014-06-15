@@ -23,6 +23,7 @@
 # 3. You need to install 'Guest Additions' to this images for metrics
 # 4. You need a lot of hard drive space ;-)
 
+require 'base64'
 require 'thread/pool'
 require 'thread/future'
 require 'tmpdir'
@@ -253,8 +254,8 @@ module Deltacloud
           Dir.mktmpdir do |dir|
             raw_image = convert_image(vbox_vm_info(uuid))
             open("#{dir}/meta-data", "w") { |fd| fd.write("instance-id: #{raw_image[:name].gsub(/\s+/, '-')}\nlocal-hostname: localhost\n") }
-            open("#{dir}/user-data", "w") { |fd| fd.write(user_data) }
-            open("#{dir}/vendor-data", "w") { |fd| fd.write(vendor_data) } unless vendor_data.nil?
+            open("#{dir}/user-data", "w") { |fd| fd.write(Base64.decode64(user_data)) }
+            open("#{dir}/vendor-data", "w") { |fd| fd.write(Base64.decode64(vendor_data)) } unless vendor_data.nil?
             iso = genisoimage(dir)
             name = raw_image.select { |k, v| /^storagecontrollertype\d$/ =~ k && ["PIIX3", "PIIX4", "ICH6"].member?(v) }.map { |k, v| k }.first
             if name.empty?
