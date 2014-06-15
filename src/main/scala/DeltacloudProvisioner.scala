@@ -32,7 +32,7 @@ import spray.can.Http
 import spray.http._
 import spray.client.pipelining._
 
-class DeltacloudProvisioner(label: String, joinAddress: Address)(implicit system: ActorSystem) {
+class DeltacloudProvisioner(val label: String, joinAddress: Address)(implicit system: ActorSystem) {
   import system.dispatcher
 
   val config = ConfigFactory.load()
@@ -46,7 +46,7 @@ class DeltacloudProvisioner(label: String, joinAddress: Address)(implicit system
 
   var node: Option[Instance] = None
 
-  def bootstrap(action: Instance => Unit): Unit = {
+  def bootstrap(action: Instance => Unit): Future[Unit] = {
     if (node.isEmpty) {
       val driver = config.getString("deltacloud.driver")
       val password = 
@@ -126,18 +126,20 @@ class DeltacloudProvisioner(label: String, joinAddress: Address)(implicit system
         node = Some(vm)
         action(vm)
       }
+    } else {
+      Future { () }
     }
   }
 
   def shutdown: Future[Unit] = { 
     node match {
       case Some(n) =>
-        (for {
+        for {
           _ <- Instance.stop(n.id)
           _ <- Instance.destroy(n.id)
-        } yield ()).recover {
-          case exn =>
-            println(s"ERROR: $exn")
+        } yield {
+          node = None
+          ()
         }
   
       case None =>

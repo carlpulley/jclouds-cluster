@@ -53,6 +53,7 @@ trait Dependencies {
     "com.typesafe.akka" %% "akka-actor" % V.AKKA,
     "com.typesafe.akka" %% "akka-remote" % V.AKKA,
     "com.typesafe.akka" %% "akka-cluster" % V.AKKA,
+    "com.typesafe.akka" %% "akka-contrib" % V.AKKA,
     "com.typesafe.akka" %% "akka-testkit" % V.AKKA % "test"
   )
 

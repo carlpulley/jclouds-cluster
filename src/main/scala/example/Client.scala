@@ -29,6 +29,7 @@ import akka.cluster.Cluster
 import akka.cluster.ClusterEvent.CurrentClusterState
 import akka.cluster.ClusterEvent.MemberUp
 import akka.cluster.MemberStatus
+import akka.contrib.jul.JavaLogging
 import akka.remote.RemoteScope
 import cakesolutions.api.deltacloud.Instance
 import com.typesafe.config.ConfigFactory
@@ -77,35 +78,44 @@ trait Client[Label] {
   cluster.subscribe(client, classOf[MemberUp])
 
   // Defines how we provision our cluster nodes
-  def provisionNode(label: Label): Unit
+  def provisionNode(label: Label): Future[Unit]
 
-  def shutdown: Unit
+  def shutdown: Future[Unit]
 }
 
-class ClientNode(nodes: Set[String]) extends Client[String] {
+class ClientNode(nodes: Set[String]) extends Client[String] with JavaLogging {
+  import system.dispatcher
+
   var machines = Map.empty[DeltacloudProvisioner, Instance]
 
   // Finally, provision our required nodes
-  for(label <- nodes) {
-    provisionNode(label)
+  Future.sequence(nodes.toSeq.map(provisionNode)).onFailure {
+    case exn =>
+      log.error(s"Failed to provision all the nodes in ${nodes}: $exn")
   }
 
   // Here we provision our cluster nodes
-  def provisionNode(label: String): Unit = {
+  def provisionNode(label: String): Future[Unit] = {
     val node = new DeltacloudProvisioner(label, joinAddress)
     node.bootstrap {
       case metadata =>
         machines = machines + (node -> metadata)
+    }.recover {
+      case exn =>
+        log.error(s"Failed to provision the '$label' node: $exn")
+        // As we are called from our constructor, ensure that errors ripple upwards
+        throw exn
     }
   }
 
-  def shutdown = {
-    import system.dispatcher
-
-    Future.sequence(machines.keys.map(_.shutdown)).onSuccess { 
+  def shutdown: Future[Unit] = {
+    Future.sequence(machines.keys.map(_.shutdown)).map { 
       case _ =>
         machines = Map.empty[DeltacloudProvisioner, Instance]
         system.shutdown
+    }.recover {
+      case exn =>
+        log.error(s"Failed to shutdown all the nodes in ${machines.keys.map(_.label)}: $exn")
     }
   }
 }
