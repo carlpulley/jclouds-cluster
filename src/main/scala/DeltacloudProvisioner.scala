@@ -61,6 +61,7 @@ class DeltacloudProvisioner(label: String, joinAddress: Address)(implicit system
         |"""
       ).getOrElse("")
       val ssh_keyname = config.getString(s"deltacloud.$driver.keyname")
+      // EXERCISE: implement the 'Key' deltacloud interface so that it manages $HOME/.ssh keys
       // This is a single line file, so YAML indentation is not impacted
       val ssh_key = 
         try { 
