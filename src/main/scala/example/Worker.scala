@@ -24,11 +24,13 @@ import com.typesafe.config.ConfigFactory
 import scala.util.Random
 
 class WorkerActor extends Actor {
+  val config = ConfigFactory.load()
+
   def receive: Receive = {
     case Ping(msg, tag) =>
       val route = s"$tag-${self.path.name}"
 
-      if (Random.nextInt(4) == 1) {
+      if (Random.nextInt(config.getInt("worker.die")) == 1) {
         sender ! Pong(s"$route says $msg")
       } else {
         sender ! Ping(msg, route)
