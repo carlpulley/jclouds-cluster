@@ -25,7 +25,6 @@ import cakesolutions.api.deltacloud.Realm
 import com.typesafe.config.ConfigFactory
 import scala.concurrent.duration._
 import scala.io.Source
-import scala.util.Random
 import spray.can.Http
 import spray.http._
 import spray.client.pipelining._
@@ -47,15 +46,30 @@ class DeltacloudProvisioner(label: String, joinAddress: Address)(implicit system
   def bootstrap(action: Instance => Unit): Unit = {
     if (node.isEmpty) {
       val driver = config.getString("deltacloud.driver")
-      val user_password = 
+      val password = 
         try { 
-          config.getString(s"deltacloud.$driver.password") 
+          Some(config.getString(s"deltacloud.$driver.password"))
         } catch { 
-          case _: Throwable => Random.nextString(20) 
+          case _: Throwable => None
         }
+      val default_user_password = password.map(pw =>
+        s"""password: "$pw"
+        |chpasswd: { expire: False }
+        |"""
+      ).getOrElse("")
       val ssh_keyname = config.getString(s"deltacloud.$driver.keyname")
       // This is a single line file, so YAML indentation is not impacted
-      val ssh_key = Source.fromFile(s"${config.getString("user.home")}/.ssh/$ssh_keyname.pub").mkString
+      val ssh_key = 
+        try { 
+          Some(Source.fromFile(s"${config.getString("user.home")}/.ssh/$ssh_keyname.pub").mkString) 
+        } catch {
+          case _: throwable => None
+        }
+      val ssh_authorized_keys = ssh_key.map(key => 
+        s"""ssh_authorized_keys:
+        |  - $key
+        |"""
+      ).getOrElse("")
       val chef_url = config.getString("deltacloud.chef.url")
       val chef_client = config.getString("deltacloud.chef.validation.client_name")
       // We need to take care here that our indentation is preserved in our YAML configuration
@@ -72,10 +86,8 @@ class DeltacloudProvisioner(label: String, joinAddress: Address)(implicit system
             |
             |hostname: $label
             |
-            |password: "$user_password"
-            |
-            |ssh_authorized_keys:
-            |  - $ssh_key
+            |$default_user_password
+            |$ssh_authorized_keys
             |
             |apt-upgrade: true
             |
