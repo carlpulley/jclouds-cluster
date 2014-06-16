@@ -134,6 +134,7 @@ module Deltacloud
           memory = profile.memory
           ostype = profile.id == 'microsoft' ? "Windows" : "Linux"
  
+          # EXERCISE: refactor this code to support load balancers and subnet features
           if NIC_BRIDGE.nil?
             # We ensure NAT networking is setup with DHCP (here we use a NAT/internal network hybrid)
             networks = list_networks()
