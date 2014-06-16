@@ -54,6 +54,7 @@ trait Dependencies {
     "com.typesafe.akka" %% "akka-remote" % V.AKKA,
     "com.typesafe.akka" %% "akka-cluster" % V.AKKA,
     "com.typesafe.akka" %% "akka-contrib" % V.AKKA,
+    "com.typesafe.akka" %% "akka-persistence-experimental" % V.AKKA,
     "com.typesafe.akka" %% "akka-testkit" % V.AKKA % "test"
   )
 
