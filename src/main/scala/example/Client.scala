@@ -27,6 +27,7 @@ import akka.actor.Deploy
 import akka.actor.Props
 import akka.cluster.Cluster
 import akka.cluster.ClusterEvent.CurrentClusterState
+import akka.cluster.ClusterEvent.MemberExited
 import akka.cluster.ClusterEvent.MemberUp
 import akka.cluster.MemberStatus
 import akka.contrib.jul.JavaLogging
@@ -71,11 +72,14 @@ trait Client[Label] {
         val act = system.actorOf(Props[WorkerActor].withDeploy(Deploy(scope = RemoteScope(node))), name = member.roles.head)
     
         addresses = addresses + (node -> act)
+
+      case MemberExited(member) =>
+        addresses = addresses - member.address
     }
   })
 
   // Ensure client is subscribed for member up events (i.e. allow introduction of new nodes for pinging)
-  cluster.subscribe(client, classOf[MemberUp])
+  cluster.subscribe(client, classOf[MemberUp], classOf[MemberExited])
 
   // Defines how we provision our cluster nodes
   def provisionNode(label: Label): Future[Unit]
@@ -86,7 +90,7 @@ trait Client[Label] {
 class ClientNode(nodes: Set[String]) extends Client[String] with JavaLogging {
   import system.dispatcher
 
-  var machines = Map.empty[DeltacloudProvisioner, Instance]
+  var machines = Map.empty[String, DeltacloudProvisioner]
 
   // Finally, provision our required nodes
   Future.sequence(nodes.toSeq.map(provisionNode)).onFailure {
@@ -97,11 +101,10 @@ class ClientNode(nodes: Set[String]) extends Client[String] with JavaLogging {
   // Here we provision our cluster nodes
   def provisionNode(label: String): Future[Unit] = {
     val node = new DeltacloudProvisioner(label, joinAddress)
-    node.bootstrap {
-      case metadata =>
-        machines = machines + (node -> metadata)
-    }.recover {
+    machines = machines + (label -> node)
+    node.bootstrap.recover {
       case exn =>
+        machines = machines - label
         log.error(s"Failed to provision the '$label' node: $exn")
         // As we are called from our constructor, ensure that errors ripple upwards
         throw exn
@@ -109,13 +112,13 @@ class ClientNode(nodes: Set[String]) extends Client[String] with JavaLogging {
   }
 
   def shutdown: Future[Unit] = {
-    Future.sequence(machines.keys.map(_.shutdown)).map { 
+    Future.sequence(machines.values.map(_.shutdown)).map { 
       case _ =>
-        machines = Map.empty[DeltacloudProvisioner, Instance]
+        machines = Map.empty[String, DeltacloudProvisioner]
         system.shutdown
     }.recover {
       case exn =>
-        log.error(s"Failed to shutdown all the nodes in ${machines.keys.map(_.label)}: $exn")
+        log.error(s"Failed to shutdown all the nodes in ${machines.values.map(_.label)}: $exn")
     }
   }
 }

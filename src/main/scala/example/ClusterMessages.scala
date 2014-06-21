@@ -16,8 +16,36 @@
 package cakesolutions.example
 
 import akka.actor.Address
+import spray.json._
+import spray.json.DefaultJsonProtocol
 
 object ClusterMessages {
-  case class Ping(msg: String, tag: String = "")
-  case class Pong(reply: String)
+  sealed trait Message
+  case class Ping(msg: String, tag: String = "") extends Message
+  case class Pong(reply: String) extends Message
+
+  case class ProvisionNode(label: String)
+  case class ShutdownNode(label: String)
+  case object GetMessages
+}
+
+object ClusterMessageFormats extends DefaultJsonProtocol {
+  import ClusterMessages._
+
+  implicit object MessageFormat extends RootJsonFormat[Message] {
+    val PingFormat = jsonFormat2(Ping)
+    val PongFormat = jsonFormat1(Pong)
+
+    def write(obj: Message) = obj match {
+      case ping: Ping => PingFormat.write(ping)
+      case pong: Pong => PongFormat.write(pong)
+    }
+
+    def read(json: JsValue): Message = json.asJsObject.fields("kind") match {
+      case JsString("Ping") => PingFormat.read(json)
+      case JsString("Pong") => PongFormat.read(json)
+      case msg => sys.error(s"Unexpected JSON Format: $msg")
+    }
+  }
+
 }

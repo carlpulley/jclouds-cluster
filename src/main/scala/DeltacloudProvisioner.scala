@@ -46,7 +46,7 @@ class DeltacloudProvisioner(val label: String, joinAddress: Address)(implicit sy
 
   var node: Option[Instance] = None
 
-  def bootstrap(action: Instance => Unit): Future[Unit] = {
+  def bootstrap: Future[Unit] = {
     if (node.isEmpty) {
       val driver = config.getString("deltacloud.driver")
       val password = 
@@ -108,7 +108,7 @@ class DeltacloudProvisioner(val label: String, joinAddress: Address)(implicit sy
             |  run_list:
             |   - "recipe[apt]"
             |   - "recipe[java]"
-            |   - "recipe[cluster@0.1.9]"
+            |   - "recipe[cluster@0.1.10]"
             |  
             |  # Initial attributes used by the cookbooks
             |  initial_attributes:
@@ -124,7 +124,6 @@ class DeltacloudProvisioner(val label: String, joinAddress: Address)(implicit sy
         )
       } yield {
         node = Some(vm)
-        action(vm)
       }
     } else {
       Future { () }

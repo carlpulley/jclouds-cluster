@@ -59,7 +59,11 @@ trait Dependencies {
   )
 
   val Spray = Seq(
-    "io.spray" % "spray-client" % V.SPRAY
+    "io.spray" %  "spray-client"  % V.SPRAY,
+    "io.spray" %  "spray-http"    % V.SPRAY,
+    "io.spray" %  "spray-httpx"   % V.SPRAY,
+    "io.spray" %% "spray-json"    % "1.2.6",
+    "io.spray" %  "spray-routing" % V.SPRAY
   )
 
   val Miscellaneous = Seq(
