@@ -61,7 +61,6 @@ class DeltacloudProvisioner(val label: String, joinAddress: Address)(implicit sy
         |"""
       ).getOrElse("")
       val ssh_keyname = config.getString(s"deltacloud.$driver.keyname")
-      // EXERCISE: implement the 'Key' deltacloud interface so that it manages $HOME/.ssh keys
       // This is a single line file, so YAML indentation is not impacted
       val ssh_key = 
         try { 
@@ -113,7 +112,10 @@ class DeltacloudProvisioner(val label: String, joinAddress: Address)(implicit sy
             |  # Initial attributes used by the cookbooks
             |  initial_attributes:
             |     java:
+            |       install_flavor: "oracle"
             |       jdk_version: 7
+            |       oracle:
+            |         accept_oracle_download_terms: true
             |     cluster:
             |       role: "$label"
             |       seedNode: "${joinAddress.toString}"
