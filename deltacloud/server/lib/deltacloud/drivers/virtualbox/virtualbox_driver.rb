@@ -24,6 +24,7 @@
 # 4. You need a lot of hard drive space ;-)
 
 require 'base64'
+require 'openssl'
 require 'thread/pool'
 require 'thread/future'
 require 'tmpdir'
@@ -114,7 +115,6 @@ module Deltacloud
           })]
         end
  
-        # TODO: use user_data when booting - see http://cloudinit.readthedocs.org/en/latest/topics/datasources.html#no-cloud
         def create_instance(credentials, image_id, opts)
           imgs = instances(credentials, { :image_id => image_id })
           if imgs.empty?
@@ -134,6 +134,7 @@ module Deltacloud
           memory = profile.memory
           ostype = profile.id == 'microsoft' ? "Windows" : "Linux"
  
+          # EXERCISE: refactor this code to support load balancers and subnet features
           if NIC_BRIDGE.nil?
             # We ensure NAT networking is setup with DHCP (here we use a NAT/internal network hybrid)
             networks = list_networks()
@@ -224,7 +225,91 @@ module Deltacloud
           # TODO:
         end
  
+        def keys(credentials, opts={})
+          keys = []
+          Dir.glob(ENV["HOME"]+"/.ssh/*.pub.pem").each do |keyfile|
+            public_key = File.read(keyfile)
+            public_rsa_key = OpenSSL::PKey::RSA.new(public_key)
+            key_data = OpenSSL::ASN1::Sequence([
+              OpenSSL::ASN1::Integer.new(public_rsa_key.public_key.n),
+              OpenSSL::ASN1::Integer.new(public_rsa_key.public_key.e)
+            ])
+            if File.exists?(keyfile[0..-9]+".pem")
+              private_key = File.read(keyfile[0..-9]+".pem")
+              rsa_key = OpenSSL::PKey::RSA.new(private_key)
+              key = {
+                :name => File.basename(keyfile)[0..-9],
+                :fingerprint => OpenSSL::Digest::SHA1.hexdigest(key_data.to_der).scan(/../).join(':'),
+                :public_key => public_key,
+                :private_key => private_key
+              }
+            else
+              key = {
+                :name => File.basename(keyfile)[0..-9],
+                :fingerprint => OpenSSL::Digest::SHA1.hexdigest(key_data.to_der).scan(/../).join(':'),
+                :public_key => public_key
+              }
+            end
+            keys << convert_key(key)
+          end
+          filter_on(keys, :id, opts)
+        end
+
+        def create_key(credentials, opts={})
+          if opts[:public_key] && opts[:public_key].length > 0
+            # Importing a public key
+            rsa_key = OpenSSL::PKey::RSA.new(opts[:public_key])
+            key_data = OpenSSL::ASN1::Sequence([
+              OpenSSL::ASN1::Integer.new(rsa_key.public_key.n),
+              OpenSSL::ASN1::Integer.new(rsa_key.public_key.e)
+            ])
+            File.write(ENV["HOME"]+"/.ssh/"+opts[:key_name]+".pub.pem", opts[:public_key])
+            key = {
+              :name => opts[:key_name],
+              :fingerprint => OpenSSL::Digest::SHA1.hexdigest(key_data.to_der).scan(/../).join(':'),
+              :public_key => opts[:public_key]
+            }
+          else
+            # Creating a new public/private key pair
+            rsa_key = OpenSSL::PKey::RSA.new(2048)
+            public_key = rsa_key.public_key.to_pem
+            private_key = rsa_key.to_pem
+            key_data = OpenSSL::ASN1::Sequence([
+              OpenSSL::ASN1::Integer.new(rsa_key.public_key.n),
+              OpenSSL::ASN1::Integer.new(rsa_key.public_key.e)
+            ])
+            File.write(ENV["HOME"]+"/.ssh/"+opts[:key_name]+".pem", private_key)
+            File.write(ENV["HOME"]+"/.ssh/"+opts[:key_name]+".pub.pem", public_key)
+            key = {
+              :name => opts[:key_name],
+              :fingerprint => OpenSSL::Digest::SHA1.hexdigest(key_data.to_der).scan(/../).join(':'),
+              :public_key => public_key,
+              :private_key => private_key
+            }
+          end
+          convert_key(key)
+        end
+
+        def destroy_key(credentials, opts={})
+          if File.exists?(ENV["HOME"]+"/.ssh/"+opts[:id]+".pem")
+            File.delete(ENV["HOME"]+"/.ssh/"+opts[:id]+".pem")
+          end
+          if File.exists?(ENV["HOME"]+"/.ssh/"+opts[:id]+".pub.pem")
+            File.delete(ENV["HOME"]+"/.ssh/"+opts[:id]+".pub.pem")
+          end
+        end
+
         private
+
+        def convert_key(key)
+          Key.new(
+            :id => key[:name],
+            :fingerprint => key[:fingerprint],
+            :credential_type => :key,
+            :pem_rsa_key => key[:private_key],
+            :state => "AVAILABLE"
+          )
+        end
 
         def list_networks()
           raw_data = vbox_client("list natnetworks")
