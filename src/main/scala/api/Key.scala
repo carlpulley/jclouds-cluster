@@ -32,7 +32,8 @@ import xml.NodeSeq
 case class Key(
   id: String,
   fingerprint: String,
-  state: String
+  state: String,
+  pem: Option[String]
 )
 
 object Key {
@@ -41,8 +42,9 @@ object Key {
     val id = (data \ "@id").text
     val fingerprint = (data \ "fingerprint").text
     val state = (data \ "state").text
-  
-    Key(id, fingerprint, state)
+    val pem = (data \ "pem").text
+
+    Key(id, fingerprint, state, if (pem.isEmpty) None else Some(pem))
   }
 
   implicit val unmarshalKey = 
