@@ -33,6 +33,8 @@ import akka.pattern.ask
 import akka.remote.RemoteScope
 import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
+import java.io.ByteArrayOutputStream
+import java.io.ObjectOutputStream
 import scala.concurrent.duration._
 import scala.reflect.ClassTag
 import scala.util.Failure
@@ -75,14 +77,19 @@ trait ControllerService extends Directives with SprayJsonSupport {
       }
     } ~
     path("cluster") {
-      // TODO: define marshaling for Member class
-      //path("members") {
-      //  get {
-      //    complete {
-      //      (self ? CurrentClusterState).mapTo[List[Member]]
-      //    }
-      //  }
-      //} ~
+      path("members") {
+        get {
+          complete {
+            // Here we serialize Member's as byte arrays
+            (self ? CurrentClusterState).mapTo[List[Member]].map(mem => {
+              val byteArray = new ByteArrayOutputStream(1024)
+              val out = new ObjectOutputStream(byteArray)
+              out.writeObject(mem)
+              byteArray.toByteArray
+            })
+          }
+        }
+      } ~
       path("provision" / Label) { label =>
         put {
           complete {

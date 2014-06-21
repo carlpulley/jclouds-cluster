@@ -47,5 +47,4 @@ object ClusterMessageFormats extends DefaultJsonProtocol {
       case msg => sys.error(s"Unexpected JSON Format: $msg")
     }
   }
-
 }
