@@ -19,8 +19,12 @@ user node[:cluster][:service] do
   action :create
 end
 
-unless node[:cluster][:ipaddress].nil?
-  hostsfile_entry node[:cluster][:ipaddress] do
+require 'socket'
+
+ipaddress = Socket.ip_address_list.find { |a| a.ipv4? ? !(a.ipv4_loopback?)  :  !(a.ipv6_sitelocal? || a.ipv6_linklocal? || a.ipv6_loopback?) }
+
+unless ipaddress.nil?
+  hostsfile_entry ipaddress.ip_address do
     hostname node[:cluster][:role]
     unique true
     action :create
@@ -52,6 +56,7 @@ template "/usr/share/#{node[:cluster][:service]}/config/akka-remote.conf" do
   owner "root"
   group "root"
   mode "0644"
+  variables({ :ipaddress => ipaddress.ip_address })
 end
 
 template "/usr/share/#{node[:cluster][:service]}/config/akka-cluster.conf" do
