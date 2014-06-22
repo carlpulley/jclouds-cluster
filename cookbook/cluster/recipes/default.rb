@@ -19,6 +19,18 @@ user node[:cluster][:service] do
   action :create
 end
 
+require 'socket'
+
+ipaddress = Socket.ip_address_list.find { |a| a.ipv4? ? !(a.ipv4_loopback?)  :  !(a.ipv6_sitelocal? || a.ipv6_linklocal? || a.ipv6_loopback?) }
+
+unless ipaddress.nil?
+  hostsfile_entry ipaddress.ip_address do
+    hostname node[:cluster][:role]
+    unique true
+    action :create
+  end
+end
+
 cookbook_file "/tmp/#{node[:cluster][:service]}-#{node[:cluster][:version]}.deb" do
   source "#{node[:cluster][:service]}-#{node[:cluster][:version]}.deb"
   owner "root"
@@ -32,14 +44,26 @@ package node[:cluster][:service] do
   action :install
 end
 
-execute "add-ROLE" do
-  command "sed -i -e 's/{{ROLE}}/#{node[:cluster][:role]}/g' /usr/share/#{node[:cluster][:service]}/bin/#{node[:cluster][:service]}"
-  not_if { node[:cluster][:role].nil? }
+directory "/usr/share/#{node[:cluster][:service]}/config" do
+  owner "root"
+  group "root"
+  mode "0755"
+  action :create
 end
 
-execute "add-SEEDNODE" do
-  command "sed -i -e 's|{{SEEDNODE}}|#{node[:cluster][:seedNode]}|g' /usr/share/#{node[:cluster][:service]}/bin/#{node[:cluster][:service]}"
-  not_if { node[:cluster][:seedNode].nil? }
+template "/usr/share/#{node[:cluster][:service]}/config/akka-remote.conf" do
+  source "akka-remote.conf.erb"
+  owner "root"
+  group "root"
+  mode "0644"
+  variables({ :ipaddress => ipaddress.ip_address })
+end
+
+template "/usr/share/#{node[:cluster][:service]}/config/akka-cluster.conf" do
+  source "akka-cluster.conf.erb"
+  owner "root"
+  group "root"
+  mode "0644"
 end
 
 service node[:cluster][:service] do

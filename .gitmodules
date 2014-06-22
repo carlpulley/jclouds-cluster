@@ -4,3 +4,6 @@
 [submodule "cookbook/apt"]
 	path = cookbook/apt
 	url = https://github.com/opscode-cookbooks/apt.git
+[submodule "cookbook/hostsfile"]
+	path = cookbook/hostsfile
+	url = https://github.com/customink-webops/hostsfile.git

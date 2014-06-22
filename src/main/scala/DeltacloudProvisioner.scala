@@ -112,7 +112,10 @@ class DeltacloudProvisioner(val label: String, joinAddress: Address)(implicit sy
             |  # Initial attributes used by the cookbooks
             |  initial_attributes:
             |     java:
+            |       install_flavor: "oracle"
             |       jdk_version: 7
+            |       oracle:
+            |         accept_oracle_download_terms: true
             |     cluster:
             |       role: "$label"
             |       seedNode: "${joinAddress.toString}"

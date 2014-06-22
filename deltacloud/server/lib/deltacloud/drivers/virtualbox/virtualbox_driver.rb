@@ -25,8 +25,7 @@
 
 require 'base64'
 require 'openssl'
-require 'thread/pool'
-require 'thread/future'
+require 'thread'
 require 'tmpdir'
 
 module Deltacloud
@@ -40,7 +39,10 @@ module Deltacloud
 
         NIC_BRIDGE = nil # to use network bridging, edit this to contain your NIC
 
-        POOL = Thread.pool 10
+        # Semaphores to enforce sequential behaviour on VBoxManage and friends
+        @@create_semaphore = Mutex.new
+        @@destroy_semaphore = Mutex.new
+        @@client_semaphore = Mutex.new
 
         feature :instances, :user_name
         feature :instances, :authentication_password
@@ -114,57 +116,58 @@ module Deltacloud
             :state => 'AVAILABLE'
           })]
         end
- 
+
         def create_instance(credentials, image_id, opts)
-          imgs = instances(credentials, { :image_id => image_id })
-          if imgs.empty?
-            puts "ERROR: failed to locate any image with the UUID #{image_id}"
-            return
-          end
-          instance = imgs.first
-          name = opts[:name] || "deltacloud-#{Time.now.to_i}"
-
-          # Create new virtual machine, UUID for this machine is returned
-          vm=vbox_client("createvm --name '#{name}' --register")
-          new_uid = vm.split("\n").select { |line| line=~/^UUID/ }.first.split(':').last.strip
-          
-          # Add Hardware profile to this machine
-          profile = hardware_profile(credentials, opts[:hwp_id] || "small")
-          cpu = profile.cpu
-          memory = profile.memory
-          ostype = profile.id == 'microsoft' ? "Windows" : "Linux"
- 
-          # EXERCISE: refactor this code to support load balancers and subnet features
-          if NIC_BRIDGE.nil?
-            # We ensure NAT networking is setup with DHCP (here we use a NAT/internal network hybrid)
-            networks = list_networks()
-            if networks.select { |nwk| nwk[:name] == "deltacloud-nat" }.empty?
-              vbox_client("natnetwork add -t deltacloud-nat -n '192.168.42.0/24' -e -h on")
-              vbox_client("natnetwork start -t deltacloud-nat")
+          @@create_semaphore.synchronize {
+            imgs = instances(credentials, { :image_id => image_id })
+            if imgs.empty?
+              puts "ERROR: failed to locate any image with the UUID #{image_id}"
+              return
             end
-
-            vbox_client("modifyvm '#{new_uid}' --ostype #{ostype} --memory #{memory} --vram 16 --nic1 intnet --intnet1 deltacloud-nat --cableconnected1 on --macaddress1 auto --cpus #{cpu}")
-          else
-            vbox_client("modifyvm '#{new_uid}' --ostype #{ostype} --memory #{memory} --vram 16 --nic1 bridged --bridgeadapter1 #{NIC_BRIDGE} --cableconnected1 on --macaddress1 auto --cpus #{cpu}")
-          end
-
-          # Add storage
-          # This will 'reuse' existing image
-          location = instance_volume_location(instance.id)
-          new_location = File.join(File.dirname(location), name+'.vdi')
-
-          # This need to be in a fork, because it takes some time with large images
-          POOL.process do
-            vbox_client("clonehd '#{location}' '#{new_location}' --format VDI")
-            vbox_client("storagectl '#{new_uid}' --add ide --name '#{name.downcase}'-hd0 --controller PIIX4")
-            vbox_client("storageattach '#{new_uid}' --storagectl '#{name.downcase}'-hd0 --port 0 --device 0 --type hdd --medium '#{new_location}'")
-
-            add_user_data(new_uid, opts[:user_data]) if opts[:user_data]
-
-            start_instance(credentials, new_uid)
-          end
-
-          convert_instance(new_uid, image_id)
+            instance = imgs.first
+            name = opts[:name] || "deltacloud-#{Time.now.to_i}"
+  
+            # Create new virtual machine, UUID for this machine is returned
+            vm=vbox_client("createvm --name '#{name}' --register")
+            new_uid = vm.split("\n").select { |line| line=~/^UUID/ }.first.split(':').last.strip
+            
+            # Add Hardware profile to this machine
+            profile = hardware_profile(credentials, opts[:hwp_id] || "small")
+            cpu = profile.cpu
+            memory = profile.memory
+            ostype = profile.id == 'microsoft' ? "Windows" : "Linux"
+  
+            # EXERCISE: refactor this code to support network and subnet features
+            if NIC_BRIDGE.nil?
+              # We ensure NAT networking is setup with DHCP (here we use a NAT/internal network hybrid)
+              networks = list_networks()
+              if networks.select { |nwk| nwk[:name] == "deltacloud-nat" }.empty?
+                vbox_client("natnetwork add -t deltacloud-nat -n '192.168.42.0/24' -e -h on")
+                vbox_client("natnetwork start -t deltacloud-nat")
+              end
+  
+              vbox_client("modifyvm '#{new_uid}' --ostype #{ostype} --memory #{memory} --vram 16 --nic1 intnet --intnet1 deltacloud-nat --cableconnected1 on --macaddress1 auto --cpus #{cpu}")
+            else
+              vbox_client("modifyvm '#{new_uid}' --ostype #{ostype} --memory #{memory} --vram 16 --nic1 bridged --bridgeadapter1 #{NIC_BRIDGE} --cableconnected1 on --macaddress1 auto --cpus #{cpu}")
+            end
+  
+            # Add storage
+            # This will 'reuse' existing image
+            location = instance_volume_location(instance.id)
+            new_location = File.join(File.dirname(location), name+'.vdi')
+  
+            # This need to be in a fork, because it takes some time with large images
+            fork do
+              vbox_client("clonehd '#{location}' '#{new_location}' --format VDI")
+              vbox_client("storagectl '#{new_uid}' --add ide --name '#{name.downcase}'-hd0 --controller PIIX4")
+              vbox_client("storageattach '#{new_uid}' --storagectl '#{name.downcase}'-hd0 --port 0 --device 0 --type  hdd --medium '#{new_location}'")
+  
+              add_user_data(new_uid, opts[:user_data]) if opts[:user_data]
+  
+              start_instance(credentials, new_uid)
+            end
+            convert_instance(new_uid, image_id)
+          }
         end
 
         # TODO: run_on_instance?
@@ -174,8 +177,10 @@ module Deltacloud
         end
   
         def destroy_instance(credentials, id)
-          vbox_client("controlvm '#{id}' poweroff")
-          vbox_client("unregistervm '#{id}' --delete")
+          @@destroy_semaphore.synchronize {
+            vbox_client("controlvm '#{id}' poweroff")
+            vbox_client("unregistervm '#{id}' --delete")
+          }
         end
 
         def start_instance(credentials, id)
@@ -235,7 +240,9 @@ module Deltacloud
               OpenSSL::ASN1::Integer.new(public_rsa_key.public_key.e)
             ])
             if File.exists?(keyfile[0..-9]+".pem")
-              private_key = File.read(keyfile[0..-9]+".pem")
+              safely do
+                private_key = File.read(keyfile[0..-9]+".pem")
+              end
               rsa_key = OpenSSL::PKey::RSA.new(private_key)
               key = {
                 :name => File.basename(keyfile)[0..-9],
@@ -263,7 +270,9 @@ module Deltacloud
               OpenSSL::ASN1::Integer.new(rsa_key.public_key.n),
               OpenSSL::ASN1::Integer.new(rsa_key.public_key.e)
             ])
-            File.write(ENV["HOME"]+"/.ssh/"+opts[:key_name]+".pub.pem", opts[:public_key])
+            safely do
+              File.write(ENV["HOME"]+"/.ssh/"+opts[:key_name]+".pub.pem", opts[:public_key])
+            end
             key = {
               :name => opts[:key_name],
               :fingerprint => OpenSSL::Digest::SHA1.hexdigest(key_data.to_der).scan(/../).join(':'),
@@ -278,8 +287,10 @@ module Deltacloud
               OpenSSL::ASN1::Integer.new(rsa_key.public_key.n),
               OpenSSL::ASN1::Integer.new(rsa_key.public_key.e)
             ])
-            File.write(ENV["HOME"]+"/.ssh/"+opts[:key_name]+".pem", private_key)
-            File.write(ENV["HOME"]+"/.ssh/"+opts[:key_name]+".pub.pem", public_key)
+            safely do
+              File.write(ENV["HOME"]+"/.ssh/"+opts[:key_name]+".pem", private_key)
+              File.write(ENV["HOME"]+"/.ssh/"+opts[:key_name]+".pub.pem", public_key)
+            end
             key = {
               :name => opts[:key_name],
               :fingerprint => OpenSSL::Digest::SHA1.hexdigest(key_data.to_der).scan(/../).join(':'),
@@ -291,11 +302,13 @@ module Deltacloud
         end
 
         def destroy_key(credentials, opts={})
-          if File.exists?(ENV["HOME"]+"/.ssh/"+opts[:id]+".pem")
-            File.delete(ENV["HOME"]+"/.ssh/"+opts[:id]+".pem")
-          end
-          if File.exists?(ENV["HOME"]+"/.ssh/"+opts[:id]+".pub.pem")
-            File.delete(ENV["HOME"]+"/.ssh/"+opts[:id]+".pub.pem")
+          safely do
+            if File.exists?(ENV["HOME"]+"/.ssh/"+opts[:id]+".pub.pem")
+              File.delete(ENV["HOME"]+"/.ssh/"+opts[:id]+".pub.pem")
+              if File.exists?(ENV["HOME"]+"/.ssh/"+opts[:id]+".pem")
+                File.delete(ENV["HOME"]+"/.ssh/"+opts[:id]+".pem")
+              end
+            end
           end
         end
 
@@ -326,11 +339,13 @@ module Deltacloud
 
         def genisoimage(src)
           iso = "#{Dir.mktmpdir}/nocloud.iso"
-          case RbConfig::CONFIG['target_os']
-          when /^darwin/
-            `hdiutil makehybrid -iso -default-volume-name cidata -joliet -o #{iso} #{src}`
-          else
-            `genisoimage -output #{iso} -volid cidata -joliet -rock #{src}`
+          safely do
+            case RbConfig::CONFIG['target_os']
+            when /^darwin/
+              `hdiutil makehybrid -iso -default-volume-name cidata -joliet -o #{iso} #{src}`
+            else
+              `genisoimage -output #{iso} -volid cidata -joliet -rock #{src}`
+            end
           end
           iso
         end
@@ -360,7 +375,16 @@ module Deltacloud
         end
  
         def vbox_client(cmd)
-          `#{VBOX_MANAGE_PATH}/VBoxManage -q #{cmd}`.strip
+          @@client_semaphore.synchronize {
+            safely do
+              result = `#{VBOX_MANAGE_PATH}/VBoxManage -q #{cmd}`
+              begin
+                result.strip
+              rescue
+                nil
+              end
+            end
+          }
         end
  
         def vbox_vm_info(uid)
@@ -424,8 +448,8 @@ module Deltacloud
             else
               return [InstanceAddress.new(raw_ip)]
             end
-          rescue
-            puts "ERROR: do you need to install VirtualHost guest additions?"
+          rescue Exception => exn
+            puts "ERROR: #{exn}"
             return []
           end
         end

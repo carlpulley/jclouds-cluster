@@ -1,0 +1,6 @@
+netty.tcp {
+  port = <%= node[:cluster][:port] %>
+  <%- unless @ipaddress.nil? %>
+  hostname = "<%= @ipaddress %>"
+  <%- end %>
+}
