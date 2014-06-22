@@ -40,7 +40,8 @@ module Deltacloud
         NIC_BRIDGE = nil # to use network bridging, edit this to contain your NIC
 
         # Semaphores to enforce sequential behaviour on VBoxManage and friends
-        @@semaphore = Mutex.new
+        @@create_semaphore = Mutex.new
+        @@destroy_semaphore = Mutex.new
         @@client_semaphore = Mutex.new
 
         feature :instances, :user_name
@@ -117,7 +118,7 @@ module Deltacloud
         end
 
         def create_instance(credentials, image_id, opts)
-          @@semaphore.synchronize {
+          @@create_semaphore.synchronize {
             imgs = instances(credentials, { :image_id => image_id })
             if imgs.empty?
               puts "ERROR: failed to locate any image with the UUID #{image_id}"
@@ -136,7 +137,7 @@ module Deltacloud
             memory = profile.memory
             ostype = profile.id == 'microsoft' ? "Windows" : "Linux"
   
-            # EXERCISE: refactor this code to support load balancers and subnet features
+            # EXERCISE: refactor this code to support network and subnet features
             if NIC_BRIDGE.nil?
               # We ensure NAT networking is setup with DHCP (here we use a NAT/internal network hybrid)
               networks = list_networks()
@@ -176,8 +177,10 @@ module Deltacloud
         end
   
         def destroy_instance(credentials, id)
-          vbox_client("controlvm '#{id}' poweroff")
-          vbox_client("unregistervm '#{id}' --delete")
+          @@destroy_semaphore.synchronize {
+            vbox_client("controlvm '#{id}' poweroff")
+            vbox_client("unregistervm '#{id}' --delete")
+          }
         end
 
         def start_instance(credentials, id)
@@ -375,8 +378,11 @@ module Deltacloud
           @@client_semaphore.synchronize {
             safely do
               result = `#{VBOX_MANAGE_PATH}/VBoxManage -q #{cmd}`
-              result = result.strip unless result.nil?
-              result
+              begin
+                result.strip
+              rescue
+                nil
+              end
             end
           }
         end
