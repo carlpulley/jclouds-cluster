@@ -20,6 +20,7 @@ package example
 import akka.actor.Actor
 import akka.actor.ActorLogging
 import akka.actor.ActorRef
+import akka.actor.ActorSystem
 import akka.actor.Address
 import akka.actor.Deploy
 import akka.actor.Props
@@ -29,6 +30,8 @@ import akka.cluster.ClusterEvent.MemberExited
 import akka.cluster.ClusterEvent.MemberUp
 import akka.cluster.Member
 import akka.cluster.MemberStatus
+import akka.io.IO
+import akka.kernel.Bootable
 import akka.pattern.ask
 import akka.remote.RemoteScope
 import akka.util.Timeout
@@ -40,8 +43,11 @@ import scala.reflect.ClassTag
 import scala.util.Failure
 import scala.util.Random
 import scala.util.Success
+import spray.can.Http
+import spray.client.pipelining._
+import spray.http._
 import spray.httpx.SprayJsonSupport
-import spray.routing.Directives
+import spray.routing.HttpService
 
 trait MessageInterface {
   import ClusterMessages.Message
@@ -49,7 +55,7 @@ trait MessageInterface {
   var messages = List.empty[Message]
 }
 
-trait ControllerService extends Directives with SprayJsonSupport {
+trait ControllerService extends HttpService with SprayJsonSupport {
   self: Actor with ActorLogging with MessageInterface =>
 
   import ClusterMessages._
@@ -62,12 +68,14 @@ trait ControllerService extends Directives with SprayJsonSupport {
 
   val Label = "([a-z0-9]+)".r
   val joinAddress = Cluster(context.system).selfAddress
-  // The client node has already joined our cluster, so we do not need to do this here!
+  // The controller node has already joined our cluster, so we do not need to do this here!
 
   var machines = Map.empty[String, DeltacloudProvisioner]
 
+  def actorRefFactory = context
+
   val route =
-    path("client") {
+    path("controller") {
       path("messages") {
         get {
           complete {
@@ -166,5 +174,28 @@ class ControllerActor extends Actor with ActorLogging with ControllerService wit
   def receive = 
     processingMessages orElse
       clusterMessages orElse
-      endpointMessages
+      endpointMessages orElse
+      runRoute(route)
+}
+
+class ControllerNode extends Bootable {
+  val config = ConfigFactory.load()
+
+  implicit val system = ActorSystem(config.getString("akka.system"))
+
+  val cluster = Cluster(system)
+  val joinAddress = cluster.selfAddress
+  // We first ensure that we've joined our own cluster!
+  cluster.join(joinAddress)
+
+  var controller: Option[ActorRef] = None
+
+  def startup = {
+    controller = Some(system.actorOf(Props[ControllerActor]))
+  }
+
+  def shutdown = {
+    controller = None
+    system.shutdown
+  }
 }

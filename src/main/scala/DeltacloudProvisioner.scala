@@ -41,7 +41,7 @@ class DeltacloudProvisioner(val label: String, joinAddress: Address)(implicit sy
 
   implicit val timeout = Timeout(config.getInt("deltacloud.timeout").minutes)
 
-  implicit val pipeline = (request: HttpRequest) => 
+  implicit val deltacloudHttpClient = (request: HttpRequest) => 
     (IO(Http) ? (request, Http.HostConnectorSetup(host, port = port))).mapTo[HttpResponse]
 
   var node: Option[Instance] = None

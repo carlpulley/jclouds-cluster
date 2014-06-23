@@ -32,7 +32,7 @@ import xml.NodeSeq
 case class NetworkInterface(
   id: String,
   network_ids: List[String],
-  instance_ids:List[String],
+  instance_ids: List[String],
   ip_address: String
 )
 
