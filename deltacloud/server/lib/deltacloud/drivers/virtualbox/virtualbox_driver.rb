@@ -240,9 +240,7 @@ module Deltacloud
               OpenSSL::ASN1::Integer.new(public_rsa_key.public_key.e)
             ])
             if File.exists?(keyfile[0..-9]+".pem")
-              safely do
-                private_key = File.read(keyfile[0..-9]+".pem")
-              end
+              private_key = File.read(keyfile[0..-9]+".pem")
               rsa_key = OpenSSL::PKey::RSA.new(private_key)
               key = {
                 :name => File.basename(keyfile)[0..-9],
@@ -376,13 +374,11 @@ module Deltacloud
  
         def vbox_client(cmd)
           @@client_semaphore.synchronize {
-            safely do
-              result = `#{VBOX_MANAGE_PATH}/VBoxManage -q #{cmd}`
-              begin
-                result.strip
-              rescue
-                nil
-              end
+            result = `#{VBOX_MANAGE_PATH}/VBoxManage -q #{cmd}`
+            begin
+              result.strip
+            rescue
+              nil
             end
           }
         end
