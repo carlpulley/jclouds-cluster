@@ -17,6 +17,7 @@ package cakesolutions
 
 package example
 
+import akka.actor.Actor
 import akka.actor.ActorDSL._
 import akka.actor.ActorLogging
 import akka.actor.ActorRef
@@ -29,14 +30,88 @@ import akka.cluster.Cluster
 import akka.cluster.ClusterEvent.CurrentClusterState
 import akka.cluster.ClusterEvent.MemberExited
 import akka.cluster.ClusterEvent.MemberUp
+import akka.cluster.Member
 import akka.cluster.MemberStatus
 import akka.contrib.jul.JavaLogging
+import akka.io.IO
+import akka.pattern.ask
 import akka.remote.RemoteScope
+import akka.util.Timeout
 import cakesolutions.api.deltacloud.Instance
 import com.typesafe.config.ConfigFactory
+import java.io.ByteArrayInputStream
+import java.io.ObjectInputStream
 import scala.concurrent.Future
 import scala.sys.process._
+import scala.concurrent.duration._
 import scala.util.Random
+import spray.can.Http
+import spray.client.pipelining._
+import spray.http._
+import spray.httpx.SprayJsonSupport
+import spray.httpx.TransformerAux.aux2
+import spray.routing.HttpService
+
+class ClientActor(controllerHost: String) extends Actor with ActorLogging with HttpService with SprayJsonSupport {
+  import ClusterMessages._
+  import ClusterMessageFormats._
+  import context.dispatcher
+
+  val config = ConfigFactory.load()
+
+  implicit val timeout = Timeout(config.getInt("client.timeout").minutes)
+
+  val controller = (request: HttpRequest) => 
+    (IO(Http)(context.system) ? (request, Http.HostConnectorSetup(controllerHost, port = 2552))).mapTo[HttpResponse]
+
+  def actorRefFactory = context
+
+  override def preStart() = {
+    val updateInterval = config.getInt("client.update").minutes
+
+    context.system.scheduler.schedule(0.minutes, updateInterval, self, GetMessages)
+  }
+
+  def processingMessages: Receive = {
+    case pong: Pong =>
+      log.info(pong.toString)
+
+    case msg: Message =>
+      log.error(s"Didn't expect to receive: $msg")
+  }
+
+  def clusterMessages: Receive = {
+    case ProvisionNode(label) =>
+      controller(Put(s"/cluster/provision/$label"))
+
+    case ShutdownNode(label) =>
+      controller(Delete(s"/cluster/shutdown/$label"))
+
+    case GetMembers =>
+      (controller ~> unmarshal[Array[Byte]])(aux2)(Get("/cluster/members")).map(bytes => {
+        val in = new ObjectInputStream(new ByteArrayInputStream(bytes))
+        in.readObject().asInstanceOf[List[Member]]
+      }) // TODO: work with result
+  }
+
+  def endpointMessages: Receive = {
+    case GetMessages =>
+      (for {
+         queuedMsgs <- (controller ~> unmarshal[List[Message]])(aux2)(Get("/controller/messages"))
+       } yield for {
+         msg <- queuedMsgs
+       } yield (self ! msg)
+      ).onFailure {
+        case exn: Throwable =>
+          log.error(s"Failed to query controller: $exn")
+      }
+  }
+
+  def receive = 
+    processingMessages orElse
+      clusterMessages orElse
+      endpointMessages
+}
 
 trait Client[Label] {
   import ClusterMessages._

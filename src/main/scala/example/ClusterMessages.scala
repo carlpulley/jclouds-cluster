@@ -26,6 +26,7 @@ object ClusterMessages {
 
   case class ProvisionNode(label: String)
   case class ShutdownNode(label: String)
+  case object GetMembers
   case object GetMessages
 }
 
