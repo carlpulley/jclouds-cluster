@@ -35,7 +35,7 @@ object V {
   val AKKA = "2.3.3"
   val CONFIG = "1.2.1"
   val LOG4J = "1.2.17"
-  val SCALA = "2.10.2"
+  val SCALA = "2.11.1"
   val SCALACHECK = "1.11.4"
   val SCALATEST = "2.1.7"
   val SLF4J = "1.7.5"
@@ -59,16 +59,16 @@ trait Dependencies {
   )
 
   val Spray = Seq(
-    "io.spray" %  "spray-client"  % V.SPRAY,
-    "io.spray" %  "spray-http"    % V.SPRAY,
-    "io.spray" %  "spray-httpx"   % V.SPRAY,
+    "io.spray" %% "spray-client"  % V.SPRAY,
+    "io.spray" %% "spray-http"    % V.SPRAY,
+    "io.spray" %% "spray-httpx"   % V.SPRAY,
     "io.spray" %% "spray-json"    % "1.2.6",
-    "io.spray" %  "spray-routing" % V.SPRAY
+    "io.spray" %% "spray-routing" % V.SPRAY
   )
 
   val Miscellaneous = Seq(
     // Configuration
-    "com.typesafe" % "config" % V.CONFIG
+    "com.typesafe" % "config"       % V.CONFIG
   )
 }
 

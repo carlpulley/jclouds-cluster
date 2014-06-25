@@ -44,7 +44,9 @@ import java.io.ObjectInputStream
 import scala.concurrent.Future
 import scala.sys.process._
 import scala.concurrent.duration._
+import scala.util.Failure
 import scala.util.Random
+import scala.util.Success
 import spray.can.Http
 import spray.client.pipelining._
 import spray.http._
@@ -91,7 +93,13 @@ class ClientActor(controllerHost: String) extends Actor with ActorLogging with H
       (controller ~> unmarshal[Array[Byte]])(aux2)(Get("/cluster/members")).map(bytes => {
         val in = new ObjectInputStream(new ByteArrayInputStream(bytes))
         in.readObject().asInstanceOf[List[Member]]
-      }) // TODO: work with result
+      }).onComplete {
+        case Success(members) =>
+          // TODO: work with result
+
+        case Failure(exn) =>
+          log.error(s"Failed to get cluster members: $exn")
+      }
   }
 
   def endpointMessages: Receive = {
