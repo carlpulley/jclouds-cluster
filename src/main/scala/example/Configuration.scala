@@ -15,10 +15,13 @@
 
 package cakesolutions.example
 
-import java.io.Serializable
+import akka.util.Timeout
+import com.typesafe.config.ConfigFactory
+import java.util.concurrent.TimeUnit.MINUTES
+import scala.concurrent.duration._
 
-object ClusterMessages {
-  sealed trait Message extends Serializable
-  case class Ping(msg: String, tag: String = "") extends Message
-  case class Pong(reply: String) extends Message
+trait Configuration {
+  val config = ConfigFactory.load()
+
+  implicit val timeout = Timeout(config.getDuration("client.timeout", MINUTES).minutes)
 }
