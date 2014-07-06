@@ -32,12 +32,13 @@ import spray.can.Http
 import spray.http._
 import spray.client.pipelining._
 
-class DeltacloudProvisioner(val label: String, joinAddress: Address)(implicit system: ActorSystem) {
+class DeltacloudProvisioner(val label: String, joinAddress: Option[Address] = None)(implicit system: ActorSystem) {
   import system.dispatcher
 
   val config = ConfigFactory.load()
   val host = config.getString("deltacloud.host")
   val port = config.getInt("deltacloud.port")
+  val driver = config.getString("deltacloud.driver")
 
   implicit val timeout = Timeout(config.getInt("deltacloud.timeout").minutes)
 
@@ -46,38 +47,8 @@ class DeltacloudProvisioner(val label: String, joinAddress: Address)(implicit sy
 
   var node: Option[Instance] = None
 
-  def bootstrap: Future[Unit] = {
+  def bootstrap(user_data: String): Future[Unit] = {
     if (node.isEmpty) {
-      val driver = config.getString("deltacloud.driver")
-      val password = 
-        try { 
-          Some(config.getString(s"deltacloud.$driver.password"))
-        } catch { 
-          case _: Throwable => None
-        }
-      val default_user_password = password.map(pw =>
-        s"""password: "$pw"
-        |chpasswd: { expire: False }
-        |"""
-      ).getOrElse("")
-      val ssh_keyname = config.getString(s"deltacloud.$driver.keyname")
-      // This is a single line file, so YAML indentation is not impacted
-      val ssh_key = 
-        try { 
-          Some(Source.fromFile(s"${config.getString("user.home")}/.ssh/$ssh_keyname.pub").mkString) 
-        } catch {
-          case _: Throwable => None
-        }
-      val ssh_authorized_keys = ssh_key.map(key => 
-        s"""ssh_authorized_keys:
-        |  - $key
-        |"""
-      ).getOrElse("")
-      val chef_url = config.getString("deltacloud.chef.url")
-      val chef_client = config.getString("deltacloud.chef.validation.client_name")
-      // We need to take care here that our indentation is preserved in our YAML configuration
-      val chef_validator = Source.fromFile(config.getString("deltacloud.chef.validation.pem")).getLines.mkString("\n|      ")
-
       for {
         realms <- Realm.index(state = Some("available"))
         vm <- Instance.create(
@@ -85,44 +56,7 @@ class DeltacloudProvisioner(val label: String, joinAddress: Address)(implicit sy
           keyname = Some(config.getString(s"deltacloud.$driver.keyname")),
           realm_id = Some(realms.head.id),
           hwp_id = Some(config.getString(s"deltacloud.$driver.hwp")),
-          user_data = Some(s"""#cloud-config
-            |
-            |hostname: $label
-            |
-            |$default_user_password
-            |$ssh_authorized_keys
-            |
-            |apt-upgrade: true
-            |
-            |chef:
-            |  install_type: "packages"
-            |  force_install: false
-            |  
-            |  server_url: "$chef_url"
-            |  validation_name: "$chef_client"
-            |  validation_key: |
-            |      $chef_validator
-            |  
-            |  # A run list for a first boot json
-            |  run_list:
-            |   - "recipe[apt]"
-            |   - "recipe[java]"
-            |   - "recipe[cluster@0.1.10]"
-            |  
-            |  # Initial attributes used by the cookbooks
-            |  initial_attributes:
-            |     java:
-            |       install_flavor: "oracle"
-            |       jdk_version: 7
-            |       oracle:
-            |         accept_oracle_download_terms: true
-            |     cluster:
-            |       role: "$label"
-            |       seedNode: "${joinAddress.toString}"
-            |  
-            |# Capture all subprocess output into a logfile
-            |output: {all: '| tee -a /var/log/cloud-init-output.log'}
-            |""".stripMargin)
+          user_data = Some(user_data)
         )
       } yield {
         node = Some(vm)

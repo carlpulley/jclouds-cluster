@@ -15,10 +15,22 @@
 
 package cakesolutions.example
 
-import java.io.Serializable
+import akka.actor.Actor
+import akka.cluster.ClusterEvent.MemberExited
+import akka.cluster.ClusterEvent.MemberUp
+import akka.serialization.SerializationExtension
+import ClusterMessages.Message
 
-object ClusterMessages {
-  sealed trait Message extends Serializable
-  case class Ping(msg: String, tag: String = "") extends Message
-  case class Pong(reply: String) extends Message
+trait Serializer {
+  this: Actor =>
+  
+  val serialization = SerializationExtension(context.system)
+
+  def serialize(msg: AnyRef) = 
+    serialization.serialize(msg).get
+
+  def deserialize(data: Array[Byte]) = 
+    serialization.deserialize(data, classOf[Message]) orElse
+      serialization.deserialize(data, classOf[MemberUp]) orElse
+      serialization.deserialize(data, classOf[MemberExited])
 }

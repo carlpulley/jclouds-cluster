@@ -17,170 +17,85 @@ package cakesolutions
 
 package example
 
-import akka.actor.Actor
-import akka.actor.ActorLogging
 import akka.actor.ActorRef
 import akka.actor.ActorSystem
-import akka.actor.Address
-import akka.actor.Deploy
 import akka.actor.Props
 import akka.cluster.Cluster
-import akka.cluster.ClusterEvent.CurrentClusterState
 import akka.cluster.ClusterEvent.MemberExited
 import akka.cluster.ClusterEvent.MemberUp
-import akka.cluster.Member
-import akka.cluster.MemberStatus
+import akka.http.Http
+import akka.http.model.ContentTypes._
+import akka.http.model.HttpEntity
+import akka.http.model.HttpEntity.Chunk
+import akka.http.model.HttpEntity.Chunked
+import akka.http.model.HttpEntity.ChunkStreamPart
+import akka.http.model.HttpMethods._
+import akka.http.model.HttpRequest
+import akka.http.model.HttpResponse
+import akka.http.model.Uri
 import akka.io.IO
 import akka.kernel.Bootable
 import akka.pattern.ask
-import akka.remote.RemoteScope
-import akka.util.Timeout
-import com.typesafe.config.ConfigFactory
-import java.io.ByteArrayOutputStream
-import java.io.ObjectOutputStream
-import scala.concurrent.duration._
-import scala.reflect.ClassTag
-import scala.util.Failure
-import scala.util.Random
-import scala.util.Success
-import spray.can.Http
-import spray.client.pipelining._
-import spray.http._
-import spray.httpx.SprayJsonSupport
-import spray.routing.HttpService
+import akka.stream.actor.ActorConsumer
+import akka.stream.actor.ActorConsumer.OnNext
+import akka.stream.actor.ActorProducer
+import akka.stream.FlowMaterializer
+import akka.stream.MaterializerSettings
+import akka.stream.scaladsl.Flow
+import ClusterMessages._
 
-trait MessageInterface {
-  import ClusterMessages.Message
+trait HttpServer extends Configuration with Serializer {
+  this: ActorProducer[ChunkStreamPart] =>
 
-  var messages = List.empty[Message]
-}
-
-trait ControllerService extends HttpService with SprayJsonSupport {
-  self: Actor with ActorLogging with MessageInterface =>
-
-  import ClusterMessages._
-  import ClusterMessageFormats._
   import context.dispatcher
 
-  val config = ConfigFactory.load()
+  val materializer = FlowMaterializer(MaterializerSettings())
 
-  implicit val timeout = Timeout(config.getInt("deltacloud.timeout").minutes)
+  val bindingFuture = IO(Http)(context.system) ? Http.Bind(interface = "localhost", port = config.getInt("client.port"))
 
-  val Label = "([a-z0-9]+)".r
-  val joinAddress = Cluster(context.system).selfAddress
-  // The controller node has already joined our cluster, so we do not need to do this here!
+  val requestHandler: HttpRequest => HttpResponse = {
+    case HttpRequest(PUT, Uri.Path("/ping"), hdrs, HttpEntity.Strict(_, data), _) if (hdrs.exists(_.name == "Worker")) =>
+      val path = hdrs.find(_.name == "Worker").get.value
+      context.actorSelection(path) ! OnNext(serialization.deserialize(data.toArray[Byte], classOf[Ping]))
+      HttpResponse()
 
-  var machines = Map.empty[String, DeltacloudProvisioner]
+    case HttpRequest(GET, Uri.Path("/messages"), _, _, _) =>
+      HttpResponse(entity = Chunked(`application/octet-stream`, ActorProducer[ChunkStreamPart](self)))
+  }
 
-  def actorRefFactory = context
-
-  val route =
-    path("controller") {
-      path("messages") {
-        get {
-          complete {
-            (self ? GetMessages).mapTo[List[Message]]
-          }
-        }
-      }
-    } ~
-    path("cluster") {
-      path("members") {
-        get {
-          complete {
-            // Here we serialize Member's as byte arrays
-            (self ? CurrentClusterState).mapTo[List[Member]].map(mem => {
-              val byteArray = new ByteArrayOutputStream(1024)
-              val out = new ObjectOutputStream(byteArray)
-              out.writeObject(mem)
-              byteArray.toByteArray
-            })
-          }
-        }
-      } ~
-      path("provision" / Label) { label =>
-        put {
-          complete {
-            self ! ProvisionNode(label)
-            ""
-          }
-        }
-      } ~ 
-      path("shutdown" / Label) { label =>
-        delete {
-          complete {
-            self ! ShutdownNode(label)
-            ""
-          }
-        }
-      }
-    }
-
-  def endpointMessages: Receive = {
-    case GetMessages =>
-      sender ! messages
-      messages = List.empty[Message]
-
-    case ProvisionNode(label) =>
-      val node = new DeltacloudProvisioner(label, joinAddress)(context.system)
-      machines = machines + (label -> node)
-
-      node.bootstrap.onFailure {
-        case exn: Throwable =>
-          log.error(s"Failed to provision the '$label' node: $exn")
-          machines = machines - label
-      }
-
-    case ShutdownNode(label) =>
-      machines(label).shutdown.onComplete {
-        case Success(_) =>
-          machines = machines - label
-
-        case Failure(exn) =>
-          log.error(s"Failed to shutdown the '$label' node: $exn")
-      }
+  bindingFuture foreach {
+    case Http.ServerBinding(localAddress, connectionStream) =>
+      Flow(connectionStream).foreach {
+        case Http.IncomingConnection(_, requestProducer, responseConsumer) =>
+          Flow(requestProducer).map(requestHandler).produceTo(materializer, responseConsumer)
+      }.consume(materializer)
   }
 }
 
-class ControllerActor extends Actor with ActorLogging with ControllerService with MessageInterface {
-  import ClusterMessages._
+class ControllerActor extends ActorConsumer with ActorProducer[ChunkStreamPart] with HttpServer with Configuration with Serializer {
+  override val requestStrategy = ActorConsumer.WatermarkRequestStrategy(config.getInt("client.watermark"))
 
-  var addresses = Map.empty[Address, ActorRef]
-
+  // Message instances get serialized and produced into the HTTP message chunking flow
   def processingMessages: Receive = {
-    case msg @ Ping(_, _) if (addresses.nonEmpty) =>
-      addresses.values.toList(Random.nextInt(addresses.size)) ! msg
-
-    case msg: Pong =>
-      // Queue message for sending back to the client
-      messages = messages :+ msg
+    case OnNext(msg: Message) =>
+      onNext(Chunk(serialize(msg)))
   }
 
+  // Cluster events are only produced into HTTP message chunking flow if consumer demand allows
   def clusterMessages: Receive = {
-    case state: CurrentClusterState =>
-      sender ! state.members.filter(_.status == MemberStatus.Up)
+    case msg: MemberUp if (isActive && totalDemand > 0) =>
+      onNext(Chunk(serialize(msg)))
 
-    case MemberUp(member) if (member.roles.nonEmpty) =>
-      // Convention: (head) role is used to label the nodes (single) actor
-      val node = member.address
-      val act = context.system.actorOf(Props[WorkerActor].withDeploy(Deploy(scope = RemoteScope(node))), name = member.roles.head)
-    
-      addresses = addresses + (node -> act)
-
-    case MemberExited(member) =>
-      addresses = addresses - member.address
+    case msg: MemberExited if (isActive && totalDemand > 0) =>
+      onNext(Chunk(serialize(msg)))
   }
 
   def receive = 
     processingMessages orElse
-      clusterMessages orElse
-      endpointMessages orElse
-      runRoute(route)
+      clusterMessages
 }
 
-class ControllerNode extends Bootable {
-  val config = ConfigFactory.load()
-
+class ControllerNode extends Bootable with Configuration {
   implicit val system = ActorSystem(config.getString("akka.system"))
 
   val cluster = Cluster(system)
@@ -192,6 +107,8 @@ class ControllerNode extends Bootable {
 
   def startup = {
     controller = Some(system.actorOf(Props[ControllerActor]))
+    // Ensure client is subscribed for member up and exited events (i.e. allow introduction and removal of worker nodes)
+    cluster.subscribe(controller.get, classOf[MemberUp], classOf[MemberExited])
   }
 
   def shutdown = {

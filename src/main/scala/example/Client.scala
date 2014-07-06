@@ -18,187 +18,244 @@ package cakesolutions
 package example
 
 import akka.actor.Actor
-import akka.actor.ActorDSL._
 import akka.actor.ActorLogging
+import akka.actor.ActorPath
 import akka.actor.ActorRef
+import akka.actor.ActorSelection
 import akka.actor.ActorSystem
 import akka.actor.Address
-import akka.actor.AddressFromURIString
-import akka.actor.Deploy
-import akka.actor.Props
 import akka.cluster.Cluster
-import akka.cluster.ClusterEvent.CurrentClusterState
 import akka.cluster.ClusterEvent.MemberExited
 import akka.cluster.ClusterEvent.MemberUp
-import akka.cluster.Member
-import akka.cluster.MemberStatus
 import akka.contrib.jul.JavaLogging
+import akka.http.Http
+import akka.http.model.headers.RawHeader
+import akka.http.model.HttpEntity
+import akka.http.model.HttpEntity.Chunk
+import akka.http.model.HttpEntity.Chunked
+import akka.http.model.HttpEntity.LastChunk
+import akka.http.model.HttpMethods._
+import akka.http.model.HttpRequest
+import akka.http.model.HttpResponse
+import akka.http.model.Uri
 import akka.io.IO
 import akka.pattern.ask
-import akka.remote.RemoteScope
-import akka.util.Timeout
-import cakesolutions.api.deltacloud.Instance
-import com.typesafe.config.ConfigFactory
-import java.io.ByteArrayInputStream
-import java.io.ObjectInputStream
+import akka.stream.FlowMaterializer
+import akka.stream.MaterializerSettings
+import akka.stream.scaladsl.Flow
 import scala.concurrent.Future
-import scala.sys.process._
-import scala.concurrent.duration._
-import scala.util.Failure
+import scala.io.Source
 import scala.util.Random
-import scala.util.Success
-import spray.can.Http
-import spray.client.pipelining._
-import spray.http._
-import spray.httpx.SprayJsonSupport
-import spray.httpx.TransformerAux.aux2
-import spray.routing.HttpService
 
-class ClientActor(controllerHost: String) extends Actor with ActorLogging with HttpService with SprayJsonSupport {
-  import ClusterMessages._
-  import ClusterMessageFormats._
+trait HttpClient extends Configuration with Serializer {
+  this: Actor =>
+
   import context.dispatcher
 
-  val config = ConfigFactory.load()
+  val materializer = FlowMaterializer(MaterializerSettings())
 
-  implicit val timeout = Timeout(config.getInt("client.timeout").minutes)
+  // FIXME: following can fail
+  def connection(host: String) = 
+    (IO(Http)(context.system) ? Http.Connect(host, port = config.getInt("client.port"))).mapTo[Http.OutgoingConnection]
 
-  val controller = (request: HttpRequest) => 
-    (IO(Http)(context.system) ? (request, Http.HostConnectorSetup(controllerHost, port = 2552))).mapTo[HttpResponse]
+  def sendRequest(request: HttpRequest, host: String): Future[HttpResponse] = 
+    connection(host).flatMap {
+      case connect: Http.OutgoingConnection =>
+        Flow(List(request -> 'NoContext)).produceTo(materializer, connect.processor)
+        Flow(connect.processor).map(_._1).toFuture(materializer)
+    }
 
-  def actorRefFactory = context
+  def httpProducer(host: String, target: ActorRef) = 
+    sendRequest(HttpRequest(GET, uri = Uri("/messages")), host).map {
+      case HttpResponse(_, _, Chunked(_, chunks), _) =>
+        Flow(chunks).foreach {
+          case Chunk(data, _) =>
+            target ! deserialize(data.toArray[Byte]).get
 
-  override def preStart() = {
-    val updateInterval = config.getInt("client.update").minutes
+          case LastChunk(_, _) =>
+            // Intentionally do nothing
+        }.consume(materializer)
+    }
+}
 
-    context.system.scheduler.schedule(0.minutes, updateInterval, self, GetMessages)
-  }
+class ClientActor(controllerHost: String) extends Actor with ActorLogging with HttpClient with Configuration with Serializer {
+  import ClusterMessages._
+  import context.dispatcher
+
+  // HTTP flow messages are materialised to actor messages from the controller
+  val httpFlow = httpProducer(controllerHost, self)
+
+  var addresses = Map.empty[Address, ActorSelection]
 
   def processingMessages: Receive = {
+    case ping: Ping =>
+      val node = addresses.values.toList(Random.nextInt(addresses.size))
+      sendRequest(HttpRequest(PUT, uri = Uri("/ping"), entity = HttpEntity(serialize(ping)), headers = List(RawHeader("Worker", node.toSerializationFormat))), controllerHost)
+
     case pong: Pong =>
       log.info(pong.toString)
-
-    case msg: Message =>
-      log.error(s"Didn't expect to receive: $msg")
   }
 
   def clusterMessages: Receive = {
-    case ProvisionNode(label) =>
-      controller(Put(s"/cluster/provision/$label"))
+    case MemberUp(member) if (member.roles.nonEmpty) =>
+      // Convention: (head) role is used to label the nodes (single) actor
+      val node = member.address
+      val act = context.actorSelection(ActorPath.fromString("/user/worker").toStringWithAddress(node))
+    
+      addresses = addresses + (node -> act)
 
-    case ShutdownNode(label) =>
-      controller(Delete(s"/cluster/shutdown/$label"))
-
-    case GetMembers =>
-      (controller ~> unmarshal[Array[Byte]])(aux2)(Get("/cluster/members")).map(bytes => {
-        val in = new ObjectInputStream(new ByteArrayInputStream(bytes))
-        in.readObject().asInstanceOf[List[Member]]
-      }).onComplete {
-        case Success(members) =>
-          // TODO: work with result
-
-        case Failure(exn) =>
-          log.error(s"Failed to get cluster members: $exn")
-      }
-  }
-
-  def endpointMessages: Receive = {
-    case GetMessages =>
-      (for {
-         queuedMsgs <- (controller ~> unmarshal[List[Message]])(aux2)(Get("/controller/messages"))
-       } yield for {
-         msg <- queuedMsgs
-       } yield (self ! msg)
-      ).onFailure {
-        case exn: Throwable =>
-          log.error(s"Failed to query controller: $exn")
-      }
+    case MemberExited(member) =>
+      addresses = addresses - member.address
   }
 
   def receive = 
     processingMessages orElse
-      clusterMessages orElse
-      endpointMessages
+      clusterMessages
 }
 
-trait Client[Label] {
-  import ClusterMessages._
-
-  val config = ConfigFactory.load()
-  
+class ClientNode extends Configuration with JavaLogging {
   val systemName = config.getString("akka.system")
 
   implicit val system = ActorSystem(systemName)
 
-  val cluster = Cluster(system)
-  val joinAddress = cluster.selfAddress
-  // We first ensure that we've joined our cluster!
-  cluster.join(joinAddress)
-
-  var addresses = Map.empty[Address, ActorRef]
-
-  val client = actor(new Act with ActorLogging {
-    become {
-      case msg @ Ping(_, _) if (addresses.nonEmpty) =>
-        addresses.values.toList(Random.nextInt(addresses.size)) ! msg
-  
-      case Pong(msg) =>
-        log.info(msg)
-  
-      case state: CurrentClusterState =>
-        // For demo purposes, log currently known up members
-        log.info(state.members.filter(_.status == MemberStatus.Up).toString)
-
-      case MemberUp(member) if (member.roles.nonEmpty) =>
-        // Convention: (head) role is used to label the nodes (single) actor
-        val node = member.address
-        val act = system.actorOf(Props[WorkerActor].withDeploy(Deploy(scope = RemoteScope(node))), name = member.roles.head)
-    
-        addresses = addresses + (node -> act)
-
-      case MemberExited(member) =>
-        addresses = addresses - member.address
-    }
-  })
-
-  // Ensure client is subscribed for member up events (i.e. allow introduction of new nodes for pinging)
-  cluster.subscribe(client, classOf[MemberUp], classOf[MemberExited])
-
-  // Defines how we provision our cluster nodes
-  def provisionNode(label: Label): Future[Unit]
-
-  def shutdown: Future[Unit]
-}
-
-class ClientNode(nodes: Set[String]) extends Client[String] with JavaLogging {
   import system.dispatcher
 
+  var controller: Option[DeltacloudProvisioner] = None
   var machines = Map.empty[String, DeltacloudProvisioner]
 
-  // Finally, provision our required nodes
-  Future.sequence(nodes.toSeq.map(provisionNode)).onFailure {
-    case exn =>
-      log.error(s"Failed to provision all the nodes in ${nodes}: $exn")
-  }
+  val driver = config.getString("deltacloud.driver")
+  val password = 
+    try { 
+      Some(config.getString(s"deltacloud.$driver.password"))
+    } catch { 
+      case _: Throwable => None
+    }
+  val default_user_password = password.map(pw =>
+    s"""password: "$pw"
+    |chpasswd: { expire: False }
+    |"""
+  ).getOrElse("")
+  val ssh_keyname = config.getString(s"deltacloud.$driver.keyname")
+  // This is a single line file, so YAML indentation is not impacted
+  val ssh_key = 
+    try { 
+      Some(Source.fromFile(s"${config.getString("user.home")}/.ssh/$ssh_keyname.pub").mkString) 
+    } catch {
+      case _: Throwable => None
+    }
+  val ssh_authorized_keys = ssh_key.map(key => 
+    s"""ssh_authorized_keys:
+    |  - $key
+    |"""
+  ).getOrElse("")
+  val chef_url = config.getString("deltacloud.chef.url")
+  val chef_client = config.getString("deltacloud.chef.validation.client_name")
+  // We need to take care here that our indentation is preserved in our YAML configuration
+  val chef_validator = Source.fromFile(config.getString("deltacloud.chef.validation.pem")).getLines.mkString("\n|      ")
 
-  // Here we provision our cluster nodes
-  def provisionNode(label: String): Future[Unit] = {
-    val node = new DeltacloudProvisioner(label, joinAddress)
-    machines = machines + (label -> node)
-    node.bootstrap.recover {
+  val common_config = s"""
+      |$default_user_password
+      |$ssh_authorized_keys
+      |
+      |apt-upgrade: true
+      |  
+      |# Capture all subprocess output into a logfile
+      |output: {all: '| tee -a /var/log/cloud-init-output.log'}
+      |
+      |chef:
+      |  install_type: "packages"
+      |  force_install: false
+      |  
+      |  server_url: "$chef_url"
+      |  validation_name: "$chef_client"
+      |  validation_key: |
+      |      $chef_validator
+      |  
+      |  # A run list for a first boot json
+      |  run_list:
+      |   - "recipe[apt]"
+      |   - "recipe[java]"
+      |   - "recipe[cluster@0.1.10]"
+      |  
+      |  # Initial attributes used by the cookbooks
+      |  initial_attributes:
+      |     java:
+      |       install_flavor: "oracle"
+      |       jdk_version: 7
+      |       oracle:
+      |         accept_oracle_download_terms: true
+  """
+
+  // Here we provision our cluster controller node
+  val provisionControllerNode: Future[Unit] = {
+    val node = new DeltacloudProvisioner("controller")
+
+    controller = Some(node)
+
+    node.bootstrap(s"""#cloud-config
+      |
+      |hostname: controller
+      |
+      $common_config
+      |     cluster:
+      |       role: "controller"
+      |""".stripMargin
+    ).recover {
       case exn =>
-        machines = machines - label
-        log.error(s"Failed to provision the '$label' node: $exn")
+        controller = None
+        log.error(s"Failed to provision the controller node: $exn")
         // As we are called from our constructor, ensure that errors ripple upwards
         throw exn
     }
   }
 
+  // Here we provision our cluster worker nodes
+  def provisionWorkerNode(label: String): Future[Unit] = {
+    require(controller.nonEmpty)
+    require(controller.get.node.nonEmpty)
+    require(controller.get.node.get.private_addresses.nonEmpty)
+
+    val ipAddress = controller.get.node.get.private_addresses.head.ip
+    val joinAddress = Address("akka.tcp", systemName, ipAddress, 2552)
+    val node = new DeltacloudProvisioner(label, Some(joinAddress))
+
+    machines = machines + (label -> node)
+
+    node.bootstrap(s"""#cloud-config
+      |
+      |hostname: $label
+      |
+      $common_config
+      |     cluster:
+      |       role: "worker"
+      |       seedNode: "${joinAddress.toString}"
+      |""".stripMargin
+    ).recover {
+      case exn =>
+        machines = machines - label
+        log.error(s"Failed to provision the '$label' node: $exn")
+    }
+  }
+
   def shutdown: Future[Unit] = {
+    shutdownWorkers.map {
+      case _ =>
+        controller.map(_.shutdown.map {
+          case _ =>
+            controller = None
+            system.shutdown
+        }.recover {
+          case exn =>
+            log.error(s"Failed to shutdown the controller node: $exn")
+        }
+      )
+    }
+  }
+
+  def shutdownWorkers: Future[Unit] = {
     Future.sequence(machines.values.map(_.shutdown)).map { 
       case _ =>
         machines = Map.empty[String, DeltacloudProvisioner]
-        system.shutdown
     }.recover {
       case exn =>
         log.error(s"Failed to shutdown all the nodes in ${machines.values.map(_.label)}: $exn")

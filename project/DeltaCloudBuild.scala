@@ -32,7 +32,7 @@ trait Resolvers {
 }
 
 object V {
-  val AKKA = "2.3.3"
+  val AKKA = "2.3.4"
   val CONFIG = "1.2.1"
   val LOG4J = "1.2.17"
   val SCALA = "2.11.1"
@@ -54,6 +54,8 @@ trait Dependencies {
     "com.typesafe.akka" %% "akka-remote" % V.AKKA,
     "com.typesafe.akka" %% "akka-cluster" % V.AKKA,
     "com.typesafe.akka" %% "akka-contrib" % V.AKKA,
+    "com.typesafe.akka" %% "akka-http-core-experimental" % "0.4",
+    "com.typesafe.akka" %% "akka-stream-experimental" % "0.4",
     "com.typesafe.akka" %% "akka-persistence-experimental" % V.AKKA,
     "com.typesafe.akka" %% "akka-http-core-experimental" % "0.4",
     "com.typesafe.akka" %% "akka-stream-experimental" % "0.4",
@@ -70,7 +72,7 @@ trait Dependencies {
 
   val Miscellaneous = Seq(
     // Configuration
-    "com.typesafe" % "config"       % V.CONFIG
+    "com.typesafe" % "config" % V.CONFIG
   )
 }
 

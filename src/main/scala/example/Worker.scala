@@ -15,41 +15,45 @@
 
 package cakesolutions.example
 
-import akka.actor.Actor
+import akka.actor.ActorRef
 import akka.actor.ActorSystem
+import akka.actor.Props
 import akka.cluster.Cluster
 import akka.kernel.Bootable
+import akka.stream.actor.ActorConsumer
+import akka.stream.actor.ActorConsumer.OnNext
+import akka.stream.actor.ActorProducer
 import ClusterMessages._
-import com.typesafe.config.ConfigFactory
 import scala.util.Random
 
-class WorkerActor extends Actor {
-  val config = ConfigFactory.load()
+class WorkerActor extends ActorConsumer with ActorProducer[Message] with Configuration {
+  override val requestStrategy = ActorConsumer.WatermarkRequestStrategy(config.getInt("worker.watermark"))
 
   def receive: Receive = {
-    case Ping(msg, tag) =>
+    case OnNext(Ping(msg, tag)) =>
       val route = s"$tag-${self.path.name}"
 
       if (Random.nextInt(config.getInt("worker.die")) == 1) {
-        sender ! Pong(s"$route says $msg")
+        sender ! OnNext(Pong(s"$route says $msg"))
       } else {
-        sender ! Ping(msg, route)
+        sender ! OnNext(Ping(msg, route))
       }
   }
 }
 
-class WorkerNode extends Bootable {
-  val config = ConfigFactory.load()
-
+class WorkerNode extends Bootable with Configuration {
   implicit val system = ActorSystem(config.getString("akka.system"))
 
   val cluster = Cluster(system)
 
+  var worker: Option[ActorRef] = None
+
   def startup = {
-    // We simply listen for remote actor creation events by default here
+    worker = Some(system.actorOf(Props[WorkerActor], "worker"))
   }
 
   def shutdown = {
+    worker = None
     system.shutdown
   }
 }
