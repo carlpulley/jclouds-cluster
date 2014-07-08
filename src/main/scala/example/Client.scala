@@ -209,13 +209,16 @@ class ClientNode extends Configuration with JavaLogging {
     }
   }
 
-  // Here we provision our cluster worker nodes
   def provisionWorkerNode(label: String): Future[Unit] = {
     require(controller.nonEmpty)
-    require(controller.get.node.nonEmpty)
-    require(controller.get.node.get.private_addresses.nonEmpty)
 
-    val ipAddress = controller.get.node.get.private_addresses.head.ip
+    controller.get.private_addresses.flatMap(private_addresses =>
+      provisionWorkerNode(label, private_addresses.head.ip)
+    )
+  }
+
+  // Here we provision our cluster worker nodes
+  def provisionWorkerNode(label: String, ipAddress: String): Future[Unit] = {
     val joinAddress = Address("akka.tcp", systemName, ipAddress, 2552)
     val node = new DeltacloudProvisioner(label, Some(joinAddress))
 

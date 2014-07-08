@@ -20,6 +20,7 @@ import akka.actor.Address
 import akka.io.IO
 import akka.pattern.ask
 import akka.util.Timeout
+import cakesolutions.api.deltacloud
 import cakesolutions.api.deltacloud.Instance
 import cakesolutions.api.deltacloud.Realm
 import com.typesafe.config.ConfigFactory
@@ -64,6 +65,14 @@ class DeltacloudProvisioner(val label: String, joinAddress: Option[Address] = No
     } else {
       Future { () }
     }
+  }
+
+  // As we can't guarantee that the stored created instance (in node) has the current IP address 
+  // information, this method allows a secondary lookup
+  def private_addresses: Future[List[deltacloud.Address]] = {
+    require(node.nonEmpty)
+
+    Instance.show(node.get.id).map(vm => vm.private_addresses)
   }
 
   def shutdown: Future[Unit] = { 

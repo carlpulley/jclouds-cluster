@@ -31,16 +31,18 @@ import xml.NodeSeq
 
 case class Address(
   ip: String,
+  typ: String,
   instance_id: Option[String]
 )
 
 object Address {
 
   def xmlToAddress(data: NodeSeq): Address = {
-    val ip = (data \ "ip").text
+    val ip = data.text
+    val typ = (data \ "@type").text
     val instance_id = (data \ "instance").text
   
-    Address(ip, if (instance_id.isEmpty) None else Some(instance_id))
+    Address(ip, typ, if (instance_id.isEmpty) None else Some(instance_id))
   }
 
   implicit val unmarshalAddress = 

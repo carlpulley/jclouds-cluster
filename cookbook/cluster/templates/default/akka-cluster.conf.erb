@@ -1,2 +1,9 @@
+<%- unless node[:cluster][:seedNode].nil? %>
 seed-nodes = [ "<%= node[:cluster][:seedNode] %>" ]
+<%- end %>
 roles = [ "<%= node[:cluster][:role] %>" ]
+
+failure-detector {
+  acceptable-heartbeat-pause = 5 s
+  threshold = 12.0
+}
