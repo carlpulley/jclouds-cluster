@@ -24,6 +24,8 @@ import akka.actor.ActorRef
 import akka.actor.ActorSelection
 import akka.actor.ActorSystem
 import akka.actor.Address
+import akka.actor.Cancellable
+import akka.actor.Props
 import akka.cluster.Cluster
 import akka.cluster.ClusterEvent.MemberExited
 import akka.cluster.ClusterEvent.MemberUp
@@ -43,9 +45,14 @@ import akka.pattern.ask
 import akka.stream.FlowMaterializer
 import akka.stream.MaterializerSettings
 import akka.stream.scaladsl.Flow
+import scala.async.Async.async
+import scala.async.Async.await
+import scala.concurrent.duration._
 import scala.concurrent.Future
 import scala.io.Source
+import scala.util.Failure
 import scala.util.Random
+import scala.util.Success
 
 trait HttpClient extends Configuration with Serializer {
   this: Actor =>
@@ -54,7 +61,6 @@ trait HttpClient extends Configuration with Serializer {
 
   val materializer = FlowMaterializer(MaterializerSettings())
 
-  // FIXME: following can fail
   def connection(host: String) = 
     (IO(Http)(context.system) ? Http.Connect(host, port = config.getInt("client.port"))).mapTo[Http.OutgoingConnection]
 
@@ -82,10 +88,20 @@ class ClientActor(controllerHost: String) extends Actor with ActorLogging with H
   import ClusterMessages._
   import context.dispatcher
 
-  // HTTP flow messages are materialised to actor messages from the controller
-  val httpFlow = httpProducer(controllerHost, self)
-
   var addresses = Map.empty[Address, ActorSelection]
+
+  // HTTP flow messages are materialised to actor messages from the controller
+  val controllerSubscription: Cancellable = context.system.scheduler.schedule(0.seconds, config.getDuration("client.reconnect", SECONDS).seconds) {
+    httpProducer(controllerHost, self).onComplete {
+      case Success(_) =>
+        log.info("Successfully connected to Controller actor")
+        controllerSubscription.cancel()
+        context.become(processingMessages orElse clusterMessages)
+
+      case Failure(exn) =>
+        log.error(s"Failed to connect to Controller: $exn")
+    }
+  }
 
   def processingMessages: Receive = {
     case ping: Ping =>
@@ -108,9 +124,8 @@ class ClientActor(controllerHost: String) extends Actor with ActorLogging with H
       addresses = addresses - member.address
   }
 
-  def receive = 
-    processingMessages orElse
-      clusterMessages
+  // Until we successfully connect to the controller, we do nothing
+  def receive = Actor.emptyBehavior
 }
 
 class ClientNode extends Configuration with JavaLogging {
@@ -120,6 +135,7 @@ class ClientNode extends Configuration with JavaLogging {
 
   import system.dispatcher
 
+  var client: Option[ActorRef] = None
   var controller: Option[DeltacloudProvisioner] = None
   var machines = Map.empty[String, DeltacloudProvisioner]
 
@@ -202,19 +218,30 @@ class ClientNode extends Configuration with JavaLogging {
       |""".stripMargin
     ).recover {
       case exn =>
+        log.error(s"Failed to provision the 'controller' node: $exn")
         controller = None
-        log.error(s"Failed to provision the controller node: $exn")
-        // As we are called from our constructor, ensure that errors ripple upwards
-        throw exn
+        exn.printStackTrace()
+    }
+  }
+
+  def connectToController(): Future[Unit] = {
+    require(controller.nonEmpty)
+
+    async {
+      val private_addresses = await(controller.get.private_addresses)
+
+      client = Some(system.actorOf(Props(new ClientActor(private_addresses.head.ip)), "Client"))
     }
   }
 
   def provisionWorkerNode(label: String): Future[Unit] = {
     require(controller.nonEmpty)
 
-    controller.get.private_addresses.flatMap(private_addresses =>
+    async {
+      val private_addresses = await(controller.get.private_addresses)
+
       provisionWorkerNode(label, private_addresses.head.ip)
-    )
+    }
   }
 
   // Here we provision our cluster worker nodes
@@ -235,33 +262,28 @@ class ClientNode extends Configuration with JavaLogging {
       |""".stripMargin
     ).recover {
       case exn =>
-        machines = machines - label
         log.error(s"Failed to provision the '$label' node: $exn")
+        machines = machines - label
     }
   }
 
   def shutdown: Future[Unit] = {
-    shutdownWorkers.map {
-      case _ =>
-        controller.map(_.shutdown.map {
-          case _ =>
-            controller = None
-            system.shutdown
-        }.recover {
-          case exn =>
-            log.error(s"Failed to shutdown the controller node: $exn")
-        }
-      )
+    async {
+      await(shutdownWorkers)
+
+      controller.map(_.shutdown.map {
+        case _ =>
+          controller = None
+          system.shutdown
+      })
     }
   }
 
   def shutdownWorkers: Future[Unit] = {
-    Future.sequence(machines.values.map(_.shutdown)).map { 
-      case _ =>
-        machines = Map.empty[String, DeltacloudProvisioner]
-    }.recover {
-      case exn =>
-        log.error(s"Failed to shutdown all the nodes in ${machines.values.map(_.label)}: $exn")
+    async {
+      await(Future.sequence(machines.values.map(_.shutdown)))
+
+      machines = Map.empty[String, DeltacloudProvisioner]
     }
   }
 }

@@ -72,7 +72,9 @@ trait Dependencies {
 
   val Miscellaneous = Seq(
     // Configuration
-    "com.typesafe" % "config" % V.CONFIG
+    "com.typesafe"            % "config"      % V.CONFIG,
+    // Async niceness
+    "org.scala-lang.modules" %% "scala-async" % "0.9.1"
   )
 }
 
