@@ -19,15 +19,23 @@ package api
 
 package deltacloud
 
+import akka.http.model.ContentType
+import akka.http.model.FormData
+import akka.http.model.HttpEntity
+import akka.http.model.HttpEntity.Strict
+import akka.http.model.HttpMethods._
+import akka.http.model.HttpRequest
+import akka.http.model.HttpResponse
+import akka.http.model.MediaTypes._
+import akka.http.model.Uri
+import akka.http.model.Uri.Query
+import akka.stream.FlowMaterializer
+import akka.util.ByteString
+import akka.util.Timeout
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
-import spray.http._
-import spray.http.MediaTypes._
-import spray.http.Uri.Query
-import spray.httpx.TransformerAux.aux2
-import spray.httpx.unmarshalling._
-import spray.client.pipelining._
 import xml.NodeSeq
+import xml.XML
 
 case class Instance(
   id: String,
@@ -42,7 +50,7 @@ case class Instance(
 )
 
 object Instance {
-  import Address.unmarshalAddress
+  //import Address.unmarshalAddress
   import Address.xmlToAddress
   
   def xmlToInstance(data: NodeSeq): Instance = {
@@ -56,30 +64,32 @@ object Instance {
     val private_addresses = (data \ "private_addresses" \ "address").map(xmlToAddress).toList
     val actions = (data \ "actions" \ "link" \ "@rel").map(_.text).toList
   
-    Instance(id, realm_id, owner_id, image_id, hardware_profile_id, actions, state, public_addresses, private_addresses )
+    Instance(id, realm_id, owner_id, image_id, hardware_profile_id, actions, state, public_addresses, private_addresses)
   }
 
-  implicit val unmarshalInstance = 
-    Unmarshaller.delegate[NodeSeq, Instance](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`)(xmlToInstance)
-  
-  implicit val unmarshalInstances = 
-    Unmarshaller.delegate[NodeSeq, List[Instance]](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`) {   data =>
-      (data \ "instance").map(xmlToInstance).toList
-    }
+  def strictToInstance(dataStr: Strict): Instance = {
+    val data = XML.loadString(dataStr.data.utf8String)
+    xmlToInstance(data)
+  }
 
-  def show(id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    (pipeline ~> unmarshal[Instance])(aux2)(Get(s"/api/instances/$id"))
+  def strictToInstanceList(dataStr: Strict): List[Instance] = {
+    val data = XML.loadString(dataStr.data.utf8String)
+    (data \ "instance").map(xmlToInstance).toList
+  }
+
+  def show(id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
+    pipeline(HttpRequest(GET, uri = Uri(s"/api/instances/$id"))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToInstance))
 
   def index(
     id: Option[String] = None, 
     state: Option[String] = None, 
     realm_id: Option[String] = None
-  )(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    (pipeline ~> unmarshal[List[Instance]])(aux2)(Get(Uri("/api/instances").copy(query = Query(Map(
+  )(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
+    pipeline(HttpRequest(GET, uri = Uri("/api/instances").copy(query = Query(Map(
       "id" -> id,
       "state" -> state,
       "realm_id" -> realm_id
-    ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))
+    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToInstanceList))
 
   def create(
     image_id: String,
@@ -98,8 +108,8 @@ object Instance {
     snapshot_id: Option[String] = None,
     device_name: Option[String] = None,
     sandbox: Option[String] = None
-  )(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]): Future[Instance] = 
-    (pipeline ~> unmarshal[Instance])(aux2)(Post("/api/instances", FormData(Seq(
+  )(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer): Future[Instance] = 
+    pipeline(HttpRequest(POST, uri = Uri("/api/instances"), entity = Strict(ContentType(`application/x-www-form-urlencoded`), ByteString(Map(
         "image_id" -> Some(image_id), 
         "metric" -> metric, 
         "name" -> name, 
@@ -109,26 +119,26 @@ object Instance {
         "user_data" -> user_data.map(ud => new sun.misc.BASE64Encoder().encode(ud.getBytes())), 
         "user_files" -> user_files, 
         "user_iso" -> user_iso, 
-        "firewalls" -> Some(firewalls.toString),
+        "firewalls" -> (if (firewalls.isEmpty) None else Some(firewalls.toString)),
         "password" -> password, 
         "load_balancer_id" -> load_balancer_id, 
         "instance_count" -> Some(instance_count.getOrElse(1).toString), 
         "snapshot_id" -> snapshot_id, 
         "device_name" -> device_name, 
         "sandbox" -> sandbox
-    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))
+    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToInstance))
 
   def reboot(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
-    pipeline(Post(s"/api/instances/$id/reboot"))
+    pipeline(HttpRequest(POST, uri = Uri(s"/api/instances/$id/reboot")))
 
   def start(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
-    pipeline(Post(s"/api/instances/$id/start"))
+    pipeline(HttpRequest(POST, uri = Uri(s"/api/instances/$id/start")))
 
   def stop(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
-    pipeline(Post(s"/api/instances/$id/stop"))
+    pipeline(HttpRequest(POST, uri = Uri(s"/api/instances/$id/stop")))
 
   def destroy(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
-    pipeline(Delete(s"/api/instances/$id"))
+    pipeline(HttpRequest(DELETE, uri = Uri(s"/api/instances/$id")))
 
   def run(
     id: String,
@@ -138,12 +148,12 @@ object Instance {
     ip: Option[String] = None,
     port: Int = 22
   )(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
-    pipeline(Post(s"/api/instances/$id/run", FormData(Seq(
+    pipeline(HttpRequest(POST, uri = Uri(s"/api/instances/$id/run"), entity = Strict(ContentType(`application/x-www-form-urlencoded`), ByteString(Map(
         "cmd" -> Some(cmd), 
         "private_key" -> private_key, 
         "password" -> password, 
         "ip" -> ip, 
         "port" -> Some(port.toString)
-    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))
+    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&")))))
 
 }

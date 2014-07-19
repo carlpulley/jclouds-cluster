@@ -19,15 +19,23 @@ package api
 
 package deltacloud
 
+import akka.http.model.ContentType
+import akka.http.model.FormData
+import akka.http.model.HttpEntity
+import akka.http.model.HttpEntity.Strict
+import akka.http.model.HttpMethods._
+import akka.http.model.HttpRequest
+import akka.http.model.HttpResponse
+import akka.http.model.MediaTypes._
+import akka.http.model.Uri
+import akka.http.model.Uri.Query
+import akka.stream.FlowMaterializer
+import akka.util.ByteString
+import akka.util.Timeout
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
-import spray.http._
-import spray.http.MediaTypes._
-import spray.http.Uri.Query
-import spray.httpx.TransformerAux.aux2
-import spray.httpx.unmarshalling._
-import spray.client.pipelining._
 import xml.NodeSeq
+import xml.XML
 
 case class Address(
   ip: String,
@@ -45,32 +53,34 @@ object Address {
     Address(ip, typ, if (instance_id.isEmpty) None else Some(instance_id))
   }
 
-  implicit val unmarshalAddress = 
-    Unmarshaller.delegate[NodeSeq, Address](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`)(xmlToAddress)
+  def strictToAddress(dataStr: Strict): Address = {
+    val data = XML.loadString(dataStr.data.utf8String)
+    xmlToAddress(data)
+  }
 
-  implicit val unmarshalAddresses = 
-    Unmarshaller.delegate[NodeSeq, List[Address]](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`) { data => 
-      (data \ "address").map(xmlToAddress).toList
-    }
+  def strictToAddressList(dataStr: Strict): List[Address] = {
+    val data = XML.loadString(dataStr.data.utf8String)
+    (data \ "address").map(xmlToAddress).toList
+  }
 
-  def index(id: Option[String] = None)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    (pipeline ~> unmarshal[List[Address]])(aux2)(Get(Uri("/api/addresses").copy(query = Query(Map(
+  def index(id: Option[String] = None)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
+    pipeline(HttpRequest(GET, uri = Uri("/api/addresses").copy(query = Query(Map(
     "id" -> id
-    ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))
+    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToAddressList))
 
-  def show(id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    (pipeline ~> unmarshal[Address])(aux2)(Get(s"/api/addresses/$id"))
+  def show(id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
+    pipeline(HttpRequest(GET, uri = Uri(s"/api/addresses/$id"))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToAddress))
 
-  def create()(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    (pipeline ~> unmarshal[Address])(aux2)(Post("/api/addresses"))
+  def create()(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
+    pipeline(HttpRequest(POST, uri = Uri("/api/addresses"))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToAddress))
 
   def destroy(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
-    pipeline(Delete(s"/api/addresses/$id"))
+    pipeline(HttpRequest(DELETE, uri = Uri(s"/api/addresses/$id")))
 
   def associate(id: String, instance_id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
-    pipeline(Post(s"/api/addresses/$id/associate", FormData(Map("instance_id" -> instance_id))))
+    pipeline(HttpRequest(POST, uri = Uri(s"/api/addresses/$id/associate"), entity = Strict(ContentType(`application/x-www-form-urlencoded`), ByteString(s"instance_id=${instance_id}"))))
 
   def disassociate(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
-    pipeline(Post(s"/api/addresses/$id/disassociate"))
+    pipeline(HttpRequest(POST, uri = Uri(s"/api/addresses/$id/disassociate")))
 
 }

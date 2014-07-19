@@ -76,7 +76,7 @@ object LoadBalancer {
 
   def show(id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
     (pipeline ~> unmarshal[LoadBalancer])(aux2)(Get(s"/api/load_balancers/$id"))
-
+/*
   def create(
     name: String,
     realm_id: String,
@@ -91,7 +91,7 @@ object LoadBalancer {
         "listener_balancer_port" -> listener_balancer_port.toString,
         "listener_instance_port" -> listener_instance_port.toString
     ))))
-
+*/
   def destroy(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
     pipeline(Delete(s"/api/load_balancers/$id"))
 

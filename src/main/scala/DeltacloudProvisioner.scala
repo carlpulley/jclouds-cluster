@@ -20,6 +20,8 @@ import akka.actor.ActorSystem
 import akka.actor.Address
 import akka.http.Http
 import akka.http.model
+import akka.http.model.HttpRequest
+import akka.http.model.HttpResponse
 import akka.io.IO
 import akka.pattern.ask
 import akka.stream.FlowMaterializer
@@ -36,94 +38,25 @@ import scala.concurrent.Future
 import scala.io.Source
 import scala.util.Failure
 import scala.util.Success
-import spray.http._
-import spray.client.pipelining._
-
-// Until Spray and Akka Http are better integrated, we need the following shim code
-object SprayHttpShim {
-  def toModelHttpHeader(hdr: HttpHeader): model.HttpHeader = {
-    model.headers.RawHeader(hdr.name, hdr.value)
-  }
-
-  def toSprayHttpHeader(hdr: model.HttpHeader): HttpHeader = {
-    HttpHeaders.RawHeader(hdr.name, hdr.value)
-  }
-
-  def toSprayContentType(typ: model.ContentType): ContentType = typ match {
-    case model.ContentTypes.NoContentType => ContentTypes.NoContentType
-    case model.ContentType(model.MediaTypes.`application/xml`, _) => ContentType(MediaTypes.`application/xml`)
-    case model.ContentType(model.MediaTypes.`text/html`, _) => ContentType(MediaTypes.`text/html`)
-  }
-
-  def toModelHttpProtocol(proto: HttpProtocol): model.HttpProtocol = proto match {
-    case HttpProtocols.`HTTP/1.0` => model.HttpProtocols.`HTTP/1.0`
-    case HttpProtocols.`HTTP/1.1` => model.HttpProtocols.`HTTP/1.1`
-  }
-
-  def toSprayHttpProtocol(proto: model.HttpProtocol): HttpProtocol = proto match {
-    case model.HttpProtocols.`HTTP/1.0` => HttpProtocols.`HTTP/1.0`
-    case model.HttpProtocols.`HTTP/1.1` => HttpProtocols.`HTTP/1.1`
-  }
-
-  def toModelHttpEntity(entity: HttpEntity): model.HttpEntity.Regular = {
-    model.HttpEntity(entity.data.toByteArray)
-  }
-
-  // We only expect Strict or Default entities here
-  def toSprayHttpEntity(entity: model.HttpEntity)(implicit timeout: FiniteDuration, materializer: FlowMaterializer, ec: ExecutionContext): Future[HttpEntity] = entity match {
-    case entity: model.HttpEntity.Strict =>
-      for (body <- entity.toStrict(timeout, materializer))
-        yield HttpEntity(toSprayContentType(entity.contentType), body.data.toArray[Byte])
-
-    case entity: model.HttpEntity.Default =>
-      for (body <- entity.toStrict(timeout, materializer))
-        yield HttpEntity(toSprayContentType(entity.contentType), body.data.toArray[Byte])
-
-    case _ =>
-      throw new RuntimeException(s"Unexpected entity type: $entity")
-  }
-
-  def toModelHttpRequest(request: HttpRequest): model.HttpRequest = {
-    require(model.HttpMethods.getForKey(request.method.name).nonEmpty)
-
-    model.HttpRequest(
-      model.HttpMethods.getForKey(request.method.name).get, 
-      model.Uri(request.uri.toString), 
-      request.headers.map(toModelHttpHeader), 
-      toModelHttpEntity(request.entity), 
-      toModelHttpProtocol(request.protocol)
-    )
-  }
-
-  def toSprayHttpResponse(response: model.HttpResponse)(implicit timeout: FiniteDuration, materializer: FlowMaterializer, ec: ExecutionContext): Future[HttpResponse] = {
-    for (entity <- toSprayHttpEntity(response.entity)(timeout, materializer, ec))
-      yield HttpResponse(
-        response.status.intValue, 
-        entity, 
-        response.headers.map(toSprayHttpHeader).toList, 
-        toSprayHttpProtocol(response.protocol)
-      )
-  }
-}
 
 class DeltacloudProvisioner(val label: String, joinAddress: Option[Address] = None)(implicit system: ActorSystem) {
-  import SprayHttpShim._
   import system.dispatcher
 
   val config       = ConfigFactory.load()
   val host         = config.getString("deltacloud.host")
   val port         = config.getInt("deltacloud.port")
   val driver       = config.getString("deltacloud.driver")
-  val materializer = FlowMaterializer(MaterializerSettings())
+  
+  implicit val materializer = FlowMaterializer(MaterializerSettings())
 
   implicit val timeout = Timeout(config.getInt("deltacloud.timeout").minutes)
 
   implicit val deltacloudHttpClient = (request: HttpRequest) =>
     (IO(Http) ? Http.Connect(host, port = port)).flatMap {
       case connect: Http.OutgoingConnection =>
-        Flow(List(toModelHttpRequest(request) -> 'NoContext)).produceTo(materializer, connect.processor)
+        Flow(List(request -> 'NoContext)).produceTo(materializer, connect.processor)
         Flow(connect.processor).map(_._1).toFuture(materializer)
-    }.mapTo[model.HttpResponse].flatMap(toSprayHttpResponse(_)(timeout.duration, materializer, dispatcher))
+    }.mapTo[HttpResponse]
 
   var node: Option[Instance] = None
 
