@@ -19,6 +19,7 @@ import akka.actor.ActorRef
 import akka.actor.ActorSystem
 import akka.actor.Props
 import akka.cluster.Cluster
+import akka.event.LoggingReceive
 import akka.kernel.Bootable
 import akka.stream.actor.ActorConsumer
 import akka.stream.actor.ActorConsumer.OnNext
@@ -29,9 +30,10 @@ import scala.util.Random
 class WorkerActor extends ActorConsumer with ActorProducer[Message] with Configuration {
   override val requestStrategy = ActorConsumer.WatermarkRequestStrategy(config.getInt("worker.watermark"))
 
-  def receive: Receive = {
+  def receive: Receive = LoggingReceive {
     case OnNext(Ping(msg, tag)) =>
-      val route = s"$tag-${self.path.name}"
+      val role = Cluster(context.system).selfRoles.head
+      val route = s"$tag-$role"
 
       if (Random.nextInt(config.getInt("worker.die")) == 1) {
         sender ! OnNext(Pong(s"$route says $msg"))

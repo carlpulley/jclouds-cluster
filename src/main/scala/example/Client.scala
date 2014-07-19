@@ -19,17 +19,18 @@ package example
 
 import akka.actor.Actor
 import akka.actor.ActorLogging
-import akka.actor.ActorPath
 import akka.actor.ActorRef
 import akka.actor.ActorSelection
 import akka.actor.ActorSystem
 import akka.actor.Address
 import akka.actor.Cancellable
 import akka.actor.Props
+import akka.actor.RootActorPath
 import akka.cluster.Cluster
 import akka.cluster.ClusterEvent.MemberExited
 import akka.cluster.ClusterEvent.MemberUp
 import akka.contrib.jul.JavaLogging
+import akka.event.LoggingReceive
 import akka.http.Http
 import akka.http.model.headers.RawHeader
 import akka.http.model.HttpEntity
@@ -55,7 +56,7 @@ import scala.util.Random
 import scala.util.Success
 
 trait HttpClient extends Configuration with Serializer {
-  this: Actor =>
+  this: Actor with ActorLogging =>
 
   import context.dispatcher
 
@@ -79,10 +80,12 @@ trait HttpClient extends Configuration with Serializer {
       case HttpResponse(_, _, Chunked(_, chunks), _) =>
         Flow(chunks).foreach {
           case Chunk(data, _) =>
-            target ! deserialize(data.toArray[Byte]).get
+            val msg = deserialize(data.toArray[Byte]).get
+            log.debug(s"Received via /messages: $msg")
+            target ! msg
 
           case LastChunk(_, _) =>
-            // Intentionally do nothing
+            log.debug("Closing: /messages")
         }.consume(materializer)
     }
 }
@@ -97,7 +100,7 @@ class ClientActor extends Actor with ActorLogging with HttpClient with Configura
   val controllerSubscription: Cancellable = context.system.scheduler.schedule(0.seconds, config.getDuration("client.reconnect", SECONDS).seconds) {
     httpProducer(self).onComplete {
       case Success(_) =>
-        log.info("Successfully connected to Controller actor")
+        log.debug("Successfully connected to Controller actor")
         controllerSubscription.cancel()
         context.become(processingMessages orElse clusterMessages)
 
@@ -106,8 +109,8 @@ class ClientActor extends Actor with ActorLogging with HttpClient with Configura
     }
   }
 
-  def processingMessages: Receive = {
-    case ping: Ping =>
+  def processingMessages: Receive = LoggingReceive {
+    case ping: Ping if (addresses.size > 0) =>
       val node = addresses.values.toList(Random.nextInt(addresses.size))
       sendRequest(HttpRequest(PUT, uri = Uri("/ping"), entity = HttpEntity(serialize(ping)), headers = List(RawHeader("Worker", node.toSerializationFormat))))
 
@@ -115,16 +118,19 @@ class ClientActor extends Actor with ActorLogging with HttpClient with Configura
       log.info(pong.toString)
   }
 
-  def clusterMessages: Receive = {
+  def clusterMessages: Receive = LoggingReceive {
     case MemberUp(member) if (member.roles.nonEmpty) =>
       // Convention: (head) role is used to label the nodes (single) actor
       val node = member.address
-      val act = context.actorSelection(ActorPath.fromString("/user/worker").toStringWithAddress(node))
+      val act = context.actorSelection(RootActorPath(node) / "user" / "worker")
     
       addresses = addresses + (node -> act)
 
     case MemberExited(member) =>
       addresses = addresses - member.address
+
+    case msg =>
+      log.warning(s"Unhandled: $msg")
   }
 
   // Until we successfully connect to the controller, we do nothing
@@ -259,7 +265,7 @@ class ClientNode extends Configuration with JavaLogging {
       |
       $common_config
       |     cluster:
-      |       role: "worker"
+      |       role: "$label"
       |       mainClass: "cakesolutions.example.WorkerNode"
       |       seedNode: "${joinAddress.toString}"
       |""".stripMargin
