@@ -143,9 +143,9 @@ module Deltacloud
               networks = list_networks()
               if networks.select { |nwk| nwk[:name] == "deltacloud-nat" }.empty?
                 vbox_client("natnetwork add -t deltacloud-nat -n '192.168.42.0/24' -e -h on")
-                vbox_client("natnetwork start -t deltacloud-nat")
               end
-  
+              vbox_client("natnetwork start -t deltacloud-nat")
+
               vbox_client("modifyvm '#{new_uid}' --ostype #{ostype} --memory #{memory} --vram 16 --nic1 intnet --intnet1 deltacloud-nat --cableconnected1 on --macaddress1 auto --cpus #{cpu}")
             else
               vbox_client("modifyvm '#{new_uid}' --ostype #{ostype} --memory #{memory} --vram 16 --nic1 bridged --bridgeadapter1 #{NIC_BRIDGE} --cableconnected1 on --macaddress1 auto --cpus #{cpu}")

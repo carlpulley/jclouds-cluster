@@ -61,18 +61,21 @@ trait HttpClient extends Configuration with Serializer {
 
   val materializer = FlowMaterializer(MaterializerSettings())
 
-  def connection(host: String) = 
-    (IO(Http)(context.system) ? Http.Connect(host, port = config.getInt("client.port"))).mapTo[Http.OutgoingConnection]
+  val host = config.getString("controller.host")
+  val port = config.getInt("controller.port")
 
-  def sendRequest(request: HttpRequest, host: String): Future[HttpResponse] = 
-    connection(host).flatMap {
+  def connection = 
+    (IO(Http)(context.system) ? Http.Connect(host, port = port)).mapTo[Http.OutgoingConnection]
+
+  def sendRequest(request: HttpRequest): Future[HttpResponse] = 
+    connection.flatMap {
       case connect: Http.OutgoingConnection =>
         Flow(List(request -> 'NoContext)).produceTo(materializer, connect.processor)
         Flow(connect.processor).map(_._1).toFuture(materializer)
     }
 
-  def httpProducer(host: String, target: ActorRef) = 
-    sendRequest(HttpRequest(GET, uri = Uri("/messages")), host).map {
+  def httpProducer(target: ActorRef) = 
+    sendRequest(HttpRequest(GET, uri = Uri("/messages"))).map {
       case HttpResponse(_, _, Chunked(_, chunks), _) =>
         Flow(chunks).foreach {
           case Chunk(data, _) =>
@@ -84,7 +87,7 @@ trait HttpClient extends Configuration with Serializer {
     }
 }
 
-class ClientActor(controllerHost: String) extends Actor with ActorLogging with HttpClient with Configuration with Serializer {
+class ClientActor extends Actor with ActorLogging with HttpClient with Configuration with Serializer {
   import ClusterMessages._
   import context.dispatcher
 
@@ -92,7 +95,7 @@ class ClientActor(controllerHost: String) extends Actor with ActorLogging with H
 
   // HTTP flow messages are materialised to actor messages from the controller
   val controllerSubscription: Cancellable = context.system.scheduler.schedule(0.seconds, config.getDuration("client.reconnect", SECONDS).seconds) {
-    httpProducer(controllerHost, self).onComplete {
+    httpProducer(self).onComplete {
       case Success(_) =>
         log.info("Successfully connected to Controller actor")
         controllerSubscription.cancel()
@@ -106,7 +109,7 @@ class ClientActor(controllerHost: String) extends Actor with ActorLogging with H
   def processingMessages: Receive = {
     case ping: Ping =>
       val node = addresses.values.toList(Random.nextInt(addresses.size))
-      sendRequest(HttpRequest(PUT, uri = Uri("/ping"), entity = HttpEntity(serialize(ping)), headers = List(RawHeader("Worker", node.toSerializationFormat))), controllerHost)
+      sendRequest(HttpRequest(PUT, uri = Uri("/ping"), entity = HttpEntity(serialize(ping)), headers = List(RawHeader("Worker", node.toSerializationFormat))))
 
     case pong: Pong =>
       log.info(pong.toString)
@@ -215,6 +218,7 @@ class ClientNode extends Configuration with JavaLogging {
       $common_config
       |     cluster:
       |       role: "controller"
+      |       mainClass: "cakesolutions.example.ControllerNode"
       |""".stripMargin
     ).recover {
       case exn =>
@@ -224,20 +228,18 @@ class ClientNode extends Configuration with JavaLogging {
     }
   }
 
-  def connectToController(): Future[Unit] = {
+  def connectToController(): Unit = {
     require(controller.nonEmpty)
 
-    async {
-      val private_addresses = await(controller.get.private_addresses)
-
-      client = Some(system.actorOf(Props(new ClientActor(private_addresses.head.ip)), "Client"))
-    }
+    // Here we connect via the gateway external IP address (this is port forwarded to the controller's private or internal IP address)
+    client = Some(system.actorOf(Props[ClientActor], "Client"))
   }
 
   def provisionWorkerNode(label: String): Future[Unit] = {
     require(controller.nonEmpty)
 
     async {
+      // Here, workers connect to the controller via its private or internal IP address
       val private_addresses = await(controller.get.private_addresses)
 
       provisionWorkerNode(label, private_addresses.head.ip)
@@ -258,6 +260,7 @@ class ClientNode extends Configuration with JavaLogging {
       $common_config
       |     cluster:
       |       role: "worker"
+      |       mainClass: "cakesolutions.example.WorkerNode"
       |       seedNode: "${joinAddress.toString}"
       |""".stripMargin
     ).recover {

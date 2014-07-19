@@ -1,7 +1,7 @@
 # generated upstart config (with bug fix to start stanzas)
 
-description "${{descr}}"
-author "${{author}}"
+description "Ping-Pong Application (Clustered)"
+author "Carl Pulley"
 
 # Stanzas
 #
@@ -16,17 +16,17 @@ start on (started networking)
 stop on runlevel [016]
 stop on (stopping networking)
 
-# Automatically restart process if crashed. Tries ${{retries}} times every ${{retryTimeout}} seconds
+# Automatically restart process if crashed. Tries 0 times every 60 seconds
 respawn
-respawn limit ${{retries}} ${{retryTimeout}}
+respawn limit 0 60
 
 # set the working directory of the job processes
-chdir ${{chdir}}
+chdir /usr/share/<%= node[:cluster][:service] %>
 
 # changes to the user and group before running the job's process
-setuid ${{daemon_user}}
+setuid <%= node[:cluster][:service] %>
 
 # Start the process
 script
-  exec ./bin/${{exec}}
+  exec ./bin/<%= node[:cluster][:service] %> <%= node[:cluster][:mainClass] %>
 end script

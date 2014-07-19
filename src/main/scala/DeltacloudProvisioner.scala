@@ -87,6 +87,12 @@ class DeltacloudProvisioner(val label: String, joinAddress: Option[Address] = No
     Instance.show(node.get.id).map(vm => vm.private_addresses)
   }
 
+  def public_addresses: Future[List[deltacloud.Address]] = {
+    require(node.nonEmpty)
+
+    Instance.show(node.get.id).map(vm => vm.public_addresses)
+  }
+
   def shutdown: Future[Unit] = { 
     node match {
       case Some(n) =>

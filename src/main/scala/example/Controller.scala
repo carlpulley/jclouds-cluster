@@ -50,8 +50,10 @@ trait HttpServer extends Configuration with Serializer {
   import context.dispatcher
 
   val materializer = FlowMaterializer(MaterializerSettings())
+  val host = Cluster(context.system).selfAddress.host.getOrElse("localhost")
+  val port = config.getInt("controller.port")
 
-  val bindingFuture = IO(Http)(context.system) ? Http.Bind(interface = "localhost", port = config.getInt("client.port"))
+  val bindingFuture = IO(Http)(context.system) ? Http.Bind(interface = host, port = port)
 
   val requestHandler: HttpRequest => HttpResponse = {
     case HttpRequest(PUT, Uri.Path("/ping"), hdrs, HttpEntity.Strict(_, data), _) if (hdrs.exists(_.name == "Worker")) =>

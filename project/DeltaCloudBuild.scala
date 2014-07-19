@@ -93,7 +93,6 @@ object DeltaCloudBuild extends Build with Resolvers with Dependencies {
     javaOptions ++= Seq("-Xms256M", "-Xmx1024M", "-XX:+UseParallelGC"),
     parallelExecution in Test := false,
     mainClass in Compile := Some("akka.kernel.Main"),
-    bashScriptExtraDefines += """addApp "cakesolutions.example.WorkerNode" """,
     packageDescription := "Ping-Pong Application (Clustered)",
     packageSummary in Linux := "Ping-Pong Application (Clustered)",
     maintainer in Linux := "Carl Pulley",

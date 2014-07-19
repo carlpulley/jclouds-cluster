@@ -66,6 +66,13 @@ template "/usr/share/#{node[:cluster][:service]}/config/akka-cluster.conf" do
   mode "0644"
 end
 
+template "/etc/init/#{node[:cluster][:service]}.conf" do
+  source "#{node[:cluster][:service]}.conf.erb"
+  owner "root"
+  group "root"
+  mode "0644"
+end
+
 service node[:cluster][:service] do
   provider Chef::Provider::Service::Upstart
   supports :restart => true, :start => true, :stop => true
