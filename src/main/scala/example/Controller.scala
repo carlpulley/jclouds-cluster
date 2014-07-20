@@ -100,9 +100,10 @@ trait HttpServer extends Configuration with Serializer {
 }
 
 class ControllerActor extends ActorLogging with ActorConsumer with ActorProducer[ChunkStreamPart] with HttpServer with Configuration with Serializer {
-  override val requestStrategy = ActorConsumer.WatermarkRequestStrategy(config.getInt("client.watermark"))
 
   import context.dispatcher
+
+  override val requestStrategy = ActorConsumer.WatermarkRequestStrategy(config.getInt("controller.watermark"))
 
   val cluster = Cluster(context.system)
   var membershipScheduler: Option[Cancellable] = None

@@ -43,9 +43,14 @@ import akka.http.model.HttpResponse
 import akka.http.model.Uri
 import akka.io.IO
 import akka.pattern.ask
+import akka.stream.actor.ActorConsumer
+import akka.stream.actor.ActorConsumer.OnComplete
+import akka.stream.actor.ActorConsumer.OnNext
+import akka.stream.actor.ActorProducer
 import akka.stream.FlowMaterializer
 import akka.stream.MaterializerSettings
 import akka.stream.scaladsl.Flow
+import ClusterMessages._
 import scala.async.Async.async
 import scala.async.Async.await
 import scala.concurrent.duration._
@@ -82,17 +87,20 @@ trait HttpClient extends Configuration with Serializer {
           case Chunk(data, _) =>
             val msg = deserialize(data.toArray[Byte]).get
             log.info(s"Received via /messages: $msg")
-            target ! msg
+            target ! OnNext(msg)
 
           case LastChunk(_, _) =>
             log.info("Closing: /messages")
+            target ! OnComplete
         }.consume(materializer)
     }
 }
 
-class ClientActor extends Actor with ActorLogging with HttpClient with Configuration with Serializer {
-  import ClusterMessages._
+class ClientActor extends ActorLogging with ActorConsumer with ActorProducer[Any] with HttpClient with Configuration with Serializer {
+
   import context.dispatcher
+
+  override val requestStrategy = ActorConsumer.WatermarkRequestStrategy(config.getInt("client.watermark"))
 
   var addresses = Map.empty[Address, ActorSelection]
 
@@ -115,23 +123,35 @@ class ClientActor extends Actor with ActorLogging with HttpClient with Configura
 
   def processingMessages: Receive = LoggingReceive {
     case ping: Ping if (addresses.size > 0) =>
+      self ! OnNext(ping)
+
+    case ping: Ping =>
+      log.warning(s"Ignoring: $ping")
+
+    case OnNext(ping: Ping) if (addresses.size > 0) =>
       log.info(s"Received: $ping")
       val node = addresses.values.toList(Random.nextInt(addresses.size))
       sendRequest(HttpRequest(PUT, uri = Uri("/ping"), entity = HttpEntity(serialize(ping)), headers = List(RawHeader("Worker", node.toSerializationFormat))))
 
-    case pong: Pong =>
+    case OnNext(ping: Ping) =>
+      log.warning(s"Ignoring: $ping")
+
+    case OnNext(pong: Pong) =>
       log.info(pong.toString)
   }
 
   def clusterMessages: Receive = LoggingReceive {
-    case msg @ MemberUp(member) if (member.roles.nonEmpty) =>
+    case OnNext(msg @ MemberUp(member)) if (member.roles.nonEmpty) =>
       log.info(s"Received: $msg")
       val node = member.address
       val act = context.actorSelection(RootActorPath(node) / "user" / "worker")
     
       addresses = addresses + (node -> act)
 
-    case msg @ MemberExited(member) =>
+    case OnNext(msg: MemberUp) =>
+      log.warning(s"Ignoring: $msg")
+
+    case OnNext(msg @ MemberExited(member)) =>
       log.info(s"Received: $msg")
       addresses = addresses - member.address
   }
