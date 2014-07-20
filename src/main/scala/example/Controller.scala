@@ -103,14 +103,20 @@ class ControllerActor extends ActorLogging with ActorConsumer with ActorProducer
 
   import context.dispatcher
 
+  val cluster = Cluster(context.system)
+  var membershipScheduler: Option[Cancellable] = None
+
   // Ensure that any lost cluster membership information (from back pressure controls) can be recovered
-  val updateDuration = config.getDuration("controller.update", SECONDS).seconds
-  val membershipScheduler: Cancellable = context.system.scheduler.schedule(0.seconds, updateDuration) {
-    Cluster(context.system).sendCurrentClusterState(self)
+  def registerOnMemberUp {
+    val updateDuration = config.getDuration("controller.update", SECONDS).seconds
+    membershipScheduler = Some(context.system.scheduler.schedule(0.seconds, updateDuration) {
+      cluster.sendCurrentClusterState(self)
+    })
   }
 
   override def postStop() = {
-    membershipScheduler.cancel()
+    membershipScheduler.map(_.cancel)
+    membershipScheduler = None
   }
 
   // Message instances get serialized and produced into the HTTP message chunking flow
@@ -123,8 +129,9 @@ class ControllerActor extends ActorLogging with ActorConsumer with ActorProducer
   // Cluster events are only produced into HTTP message chunking flow if consumer demand allows
   def clusterMessages: Receive = LoggingReceive {
     case state: CurrentClusterState =>
+      log.info(s"Received: $state")
       for (msg <- state.members) {
-        self ! msg
+        self ! MemberUp(msg)
       }
 
     case msg: MemberUp if (isActive && totalDemand > 0) =>
