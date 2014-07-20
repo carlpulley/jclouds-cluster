@@ -26,6 +26,7 @@ import akka.cluster.Cluster
 import akka.cluster.ClusterEvent.CurrentClusterState
 import akka.cluster.ClusterEvent.MemberExited
 import akka.cluster.ClusterEvent.MemberUp
+import akka.cluster.MemberStatus
 import akka.event.LoggingReceive
 import akka.http.Http
 import akka.http.model.ContentTypes._
@@ -107,7 +108,7 @@ class ControllerActor extends ActorLogging with ActorConsumer with ActorProducer
   var membershipScheduler: Option[Cancellable] = None
 
   // Ensure that any lost cluster membership information (from back pressure controls) can be recovered
-  def registerOnMemberUp {
+  cluster registerOnMemberUp {
     val updateDuration = config.getDuration("controller.update", SECONDS).seconds
     membershipScheduler = Some(context.system.scheduler.schedule(0.seconds, updateDuration) {
       cluster.sendCurrentClusterState(self)
@@ -130,8 +131,11 @@ class ControllerActor extends ActorLogging with ActorConsumer with ActorProducer
   def clusterMessages: Receive = LoggingReceive {
     case state: CurrentClusterState =>
       log.info(s"Received: $state")
-      for (msg <- state.members) {
-        self ! MemberUp(msg)
+      for (mem <- state.members.filter(_.status == MemberStatus.Up)) {
+        self ! MemberUp(mem)
+      }
+      for (mem <- state.members.filter(m => List(MemberStatus.Exiting, MemberStatus.Removed).contains(m.status))) {
+        self ! MemberExited(mem)
       }
 
     case msg: MemberUp if (isActive && totalDemand > 0) =>
