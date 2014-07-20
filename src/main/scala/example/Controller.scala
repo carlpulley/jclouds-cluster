@@ -20,8 +20,10 @@ package example
 import akka.actor.ActorLogging
 import akka.actor.ActorRef
 import akka.actor.ActorSystem
+import akka.actor.Cancellable
 import akka.actor.Props
 import akka.cluster.Cluster
+import akka.cluster.ClusterEvent.CurrentClusterState
 import akka.cluster.ClusterEvent.MemberExited
 import akka.cluster.ClusterEvent.MemberUp
 import akka.event.LoggingReceive
@@ -48,6 +50,7 @@ import akka.stream.scaladsl.Flow
 import ClusterMessages._
 import scala.async.Async.async
 import scala.async.Async.await
+import scala.concurrent.duration._
 import scala.concurrent.Future
 import scala.util.Failure
 import scala.util.Success
@@ -98,6 +101,18 @@ trait HttpServer extends Configuration with Serializer {
 class ControllerActor extends ActorLogging with ActorConsumer with ActorProducer[ChunkStreamPart] with HttpServer with Configuration with Serializer {
   override val requestStrategy = ActorConsumer.WatermarkRequestStrategy(config.getInt("client.watermark"))
 
+  import context.dispatcher
+
+  // Ensure that any lost cluster membership information (from back pressure controls) can be recovered
+  val updateDuration = config.getDuration("controller.update", SECONDS).seconds
+  val membershipScheduler: Cancellable = context.system.scheduler.schedule(0.seconds, updateDuration) {
+    Cluster(context.system).sendCurrentClusterState(self)
+  }
+
+  override def postStop() = {
+    membershipScheduler.cancel()
+  }
+
   // Message instances get serialized and produced into the HTTP message chunking flow
   def processingMessages: Receive = LoggingReceive {
     case OnNext(msg: Message) =>
@@ -107,6 +122,11 @@ class ControllerActor extends ActorLogging with ActorConsumer with ActorProducer
 
   // Cluster events are only produced into HTTP message chunking flow if consumer demand allows
   def clusterMessages: Receive = LoggingReceive {
+    case state: CurrentClusterState =>
+      for (msg <- state.members) {
+        self ! msg
+      }
+
     case msg: MemberUp if (isActive && totalDemand > 0) =>
       log.info(s"Received: $msg")
       onNext(Chunk(serialize(msg)))

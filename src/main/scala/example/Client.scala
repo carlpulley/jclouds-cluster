@@ -109,6 +109,10 @@ class ClientActor extends Actor with ActorLogging with HttpClient with Configura
     }
   }
 
+  override def postStop() = {
+    controllerSubscription.cancel()
+  }
+
   def processingMessages: Receive = LoggingReceive {
     case ping: Ping if (addresses.size > 0) =>
       log.info(s"Received: $ping")
