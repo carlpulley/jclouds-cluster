@@ -46,7 +46,6 @@ import akka.pattern.ask
 import akka.stream.actor.ActorConsumer
 import akka.stream.actor.ActorConsumer.OnComplete
 import akka.stream.actor.ActorConsumer.OnNext
-import akka.stream.actor.ActorProducer
 import akka.stream.FlowMaterializer
 import akka.stream.MaterializerSettings
 import akka.stream.scaladsl.Flow
@@ -96,7 +95,7 @@ trait HttpClient extends Configuration with Serializer {
     }
 }
 
-class ClientActor extends ActorLogging with ActorConsumer with ActorProducer[Any] with HttpClient with Configuration with Serializer {
+class ClientActor extends ActorLogging with ActorConsumer with HttpClient with Configuration with Serializer {
 
   import context.dispatcher
 
