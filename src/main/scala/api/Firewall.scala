@@ -19,15 +19,23 @@ package api
 
 package deltacloud
 
+import akka.http.model.ContentType
+import akka.http.model.FormData
+import akka.http.model.HttpEntity
+import akka.http.model.HttpEntity.Strict
+import akka.http.model.HttpMethods._
+import akka.http.model.HttpRequest
+import akka.http.model.HttpResponse
+import akka.http.model.MediaTypes._
+import akka.http.model.Uri
+import akka.http.model.Uri.Query
+import akka.stream.FlowMaterializer
+import akka.util.ByteString
+import akka.util.Timeout
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
-import spray.http._
-import spray.http.MediaTypes._
-import spray.http.Uri.Query
-import spray.httpx.TransformerAux.aux2
-import spray.httpx.unmarshalling._
-import spray.client.pipelining._
 import xml.NodeSeq
+import xml.XML
 
 case class Source(
   name: String,
@@ -75,33 +83,35 @@ object Firewall {
     Firewall(owner_id, rules)
   }
 
-  implicit val unmarshalFirewall = 
-    Unmarshaller.delegate[NodeSeq, Firewall](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`)(xmlToFirewall)
+  def strictToFirewall(dataStr: Strict): Firewall = {
+    val data = XML.loadString(dataStr.data.utf8String)
+    xmlToFirewall(data)
+  }
 
-  implicit val unmarshalFirewalls = 
-    Unmarshaller.delegate[NodeSeq, List[Firewall]](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`) { data => 
-      (data \ "firewall").map(xmlToFirewall).toList
-    }
+  def strictToFirewallList(dataStr: Strict): List[Firewall] = {
+    val data = XML.loadString(dataStr.data.utf8String)
+    (data \ "firewall").map(xmlToFirewall).toList
+  }
 
   def index(id: Option[String] = None)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    (pipeline ~> unmarshal[List[Firewall]])(aux2)(Get(Uri("/api/firewalls").copy(query = Query(Map(
+    pipeline(HttpRequest(GET, uri = Uri("/api/firewalls").copy(query = Query(Map(
       "id" -> id
     ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))
 
   def show(id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    (pipeline ~> unmarshal[Firewall])(aux2)(Get(s"/api/firewalls/$id"))
+    pipeline(HttpRequest(GET, uri = Uri(s"/api/firewalls/$id")))
 
   def create(
     name: String, 
     description: Option[String] = None
   )(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    (pipeline ~> unmarshal[Firewall])(aux2)(Post("/api/firewalls", FormData(Seq(
+    pipeline(HttpRequest(POST, uri = Uri("/api/firewalls", FormData(Seq(
         "name" -> Some(name), 
         "description" -> description
     ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))
 
   def destroy(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
-    pipeline(Delete(s"/api/firewalls/$id"))
+    pipeline(HttpRequest(DELETE, uri = Uri(s"/api/firewalls/$id")))
 
   def new_rule(
     id: String, 
@@ -109,7 +119,7 @@ object Firewall {
     port_from: Int, 
     port_to: Int
   )(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
-    pipeline(Post(s"/api/firewalls/$id/rules", FormData(Map(
+    pipeline(HttpRequest(POST, uri = Uri(s"/api/firewalls/$id/rules", FormData(Map(
       "protocol" -> protocol,
       "port_from" -> port_from.toString,
       "port_to" -> port_to.toString

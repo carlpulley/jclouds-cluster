@@ -39,7 +39,6 @@ object V {
   val SCALACHECK = "1.11.4"
   val SCALATEST = "2.1.7"
   val SLF4J = "1.7.5"
-  val SPRAY = "1.3.1"
 }
 
 trait Dependencies {
@@ -62,14 +61,6 @@ trait Dependencies {
     "com.typesafe.akka" %% "akka-testkit" % V.AKKA % "test"
   )
 
-  val Spray = Seq(
-    "io.spray" %% "spray-client"  % V.SPRAY,
-    "io.spray" %% "spray-http"    % V.SPRAY,
-    "io.spray" %% "spray-httpx"   % V.SPRAY,
-    "io.spray" %% "spray-json"    % "1.2.6",
-    "io.spray" %% "spray-routing" % V.SPRAY
-  )
-
   val Miscellaneous = Seq(
     // Configuration
     "com.typesafe"            % "config"      % V.CONFIG,
@@ -86,7 +77,7 @@ object DeltaCloudBuild extends Build with Resolvers with Dependencies {
     shellPrompt := { st => Project.extract(st).currentProject.id + "> " },
     autoCompilerPlugins := true,
     resolvers := DeltaCloudResolvers,
-    libraryDependencies := Akka ++ Spray ++ Miscellaneous,
+    libraryDependencies := Akka ++ Miscellaneous,
     checksums := Seq("sha1", "md5"),
     scalacOptions ++= Seq("-deprecation", "-unchecked", "-feature", "-language:experimental.macros"),
     javacOptions ++= Seq("-Xlint:unchecked", "-Xlint:deprecation"),
