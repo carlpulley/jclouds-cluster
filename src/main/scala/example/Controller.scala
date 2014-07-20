@@ -65,7 +65,7 @@ trait HttpServer extends Configuration with Serializer {
 
   val requestHandler: HttpRequest => Future[HttpResponse] = {
     case msg @ HttpRequest(PUT, Uri.Path("/ping"), hdrs, entity, _) if (hdrs.exists(_.name == "Worker")) =>
-      log.debug(s"Received: $msg")
+      log.info(s"Received: $msg")
       async {
         val path = hdrs.find(_.name == "Worker").get.value
         val data = await(entity.toStrict(timeout.duration, materializer)).data
@@ -80,7 +80,7 @@ trait HttpServer extends Configuration with Serializer {
       }
 
     case msg @ HttpRequest(GET, Uri.Path("/messages"), _, _, _) =>
-      log.debug(s"Received: $msg")
+      log.info(s"Received: $msg")
       Future {
         HttpResponse(entity = Chunked(`application/octet-stream`, ActorProducer[ChunkStreamPart](self)))
       }
@@ -101,18 +101,21 @@ class ControllerActor extends ActorLogging with ActorConsumer with ActorProducer
   // Message instances get serialized and produced into the HTTP message chunking flow
   def processingMessages: Receive = LoggingReceive {
     case OnNext(msg: Message) =>
+      log.info(s"Received: $msg")
       onNext(Chunk(serialize(msg)))
   }
 
   // Cluster events are only produced into HTTP message chunking flow if consumer demand allows
   def clusterMessages: Receive = LoggingReceive {
     case msg: MemberUp if (isActive && totalDemand > 0) =>
+      log.info(s"Received: $msg")
       onNext(Chunk(serialize(msg)))
 
     case msg: MemberUp =>
       log.warning(s"Ignoring: $msg")
 
     case msg: MemberExited if (isActive && totalDemand > 0) =>
+      log.info(s"Received: $msg")
       onNext(Chunk(serialize(msg)))
 
     case msg: MemberExited =>

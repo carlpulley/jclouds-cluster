@@ -15,6 +15,7 @@
 
 package cakesolutions.example
 
+import akka.actor.ActorLogging
 import akka.actor.ActorRef
 import akka.actor.ActorSystem
 import akka.actor.Props
@@ -27,11 +28,12 @@ import akka.stream.actor.ActorProducer
 import ClusterMessages._
 import scala.util.Random
 
-class WorkerActor extends ActorConsumer with ActorProducer[Message] with Configuration {
+class WorkerActor extends ActorLogging with ActorConsumer with ActorProducer[Message] with Configuration {
   override val requestStrategy = ActorConsumer.WatermarkRequestStrategy(config.getInt("worker.watermark"))
 
   def receive: Receive = LoggingReceive {
-    case OnNext(Ping(msg, tag)) =>
+    case OnNext(ping @ Ping(msg, tag)) =>
+      log.info(s"Received: $ping")
       val role = Cluster(context.system).selfRoles.head
       val route = s"$tag-$role"
 

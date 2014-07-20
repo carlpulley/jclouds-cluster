@@ -81,11 +81,11 @@ trait HttpClient extends Configuration with Serializer {
         Flow(chunks).foreach {
           case Chunk(data, _) =>
             val msg = deserialize(data.toArray[Byte]).get
-            log.debug(s"Received via /messages: $msg")
+            log.info(s"Received via /messages: $msg")
             target ! msg
 
           case LastChunk(_, _) =>
-            log.debug("Closing: /messages")
+            log.info("Closing: /messages")
         }.consume(materializer)
     }
 }
@@ -100,7 +100,7 @@ class ClientActor extends Actor with ActorLogging with HttpClient with Configura
   val controllerSubscription: Cancellable = context.system.scheduler.schedule(0.seconds, config.getDuration("client.reconnect", SECONDS).seconds) {
     httpProducer(self).onComplete {
       case Success(_) =>
-        log.debug("Successfully connected to Controller actor")
+        log.info("Successfully connected to Controller actor")
         controllerSubscription.cancel()
         context.become(processingMessages orElse clusterMessages)
 
@@ -111,6 +111,7 @@ class ClientActor extends Actor with ActorLogging with HttpClient with Configura
 
   def processingMessages: Receive = LoggingReceive {
     case ping: Ping if (addresses.size > 0) =>
+      log.info(s"Received: $ping")
       val node = addresses.values.toList(Random.nextInt(addresses.size))
       sendRequest(HttpRequest(PUT, uri = Uri("/ping"), entity = HttpEntity(serialize(ping)), headers = List(RawHeader("Worker", node.toSerializationFormat))))
 
@@ -119,18 +120,16 @@ class ClientActor extends Actor with ActorLogging with HttpClient with Configura
   }
 
   def clusterMessages: Receive = LoggingReceive {
-    case MemberUp(member) if (member.roles.nonEmpty) =>
-      // Convention: (head) role is used to label the nodes (single) actor
+    case msg @ MemberUp(member) if (member.roles.nonEmpty) =>
+      log.info(s"Received: $msg")
       val node = member.address
       val act = context.actorSelection(RootActorPath(node) / "user" / "worker")
     
       addresses = addresses + (node -> act)
 
-    case MemberExited(member) =>
+    case msg @ MemberExited(member) =>
+      log.info(s"Received: $msg")
       addresses = addresses - member.address
-
-    case msg =>
-      log.warning(s"Unhandled: $msg")
   }
 
   // Until we successfully connect to the controller, we do nothing
