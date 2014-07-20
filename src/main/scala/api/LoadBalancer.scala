@@ -19,15 +19,23 @@ package api
 
 package deltacloud
 
+import akka.http.model.ContentType
+import akka.http.model.FormData
+import akka.http.model.HttpEntity
+import akka.http.model.HttpEntity.Strict
+import akka.http.model.HttpMethods._
+import akka.http.model.HttpRequest
+import akka.http.model.HttpResponse
+import akka.http.model.MediaTypes._
+import akka.http.model.Uri
+import akka.http.model.Uri.Query
+import akka.stream.FlowMaterializer
+import akka.util.ByteString
+import akka.util.Timeout
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
-import spray.http._
-import spray.http.MediaTypes._
-import spray.http.Uri.Query
-import spray.httpx.TransformerAux.aux2
-import spray.httpx.unmarshalling._
-import spray.client.pipelining._
-import xml.NodeSeq
+import scala.xml.NodeSeq
+import scala.xml.XML
 
 case class Listener(
   protocol: String,
@@ -61,44 +69,50 @@ object LoadBalancer {
     LoadBalancer(realm_id, public_addresses, listeners, instances)
   }
 
-  implicit val unmarshalLoadBalancer = 
-    Unmarshaller.delegate[NodeSeq, LoadBalancer](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`)(xmlToLoadBalancer)
+  def strictToLoadBalancer(dataStr: Strict): LoadBalancer = {
+    val data = XML.loadString(dataStr.data.utf8String)
+    xmlToLoadBalancer(data)
+  }
 
-  implicit val unmarshalLoadBalancers = 
-    Unmarshaller.delegate[NodeSeq, List[LoadBalancer]](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`) { data => 
-      (data \ "load_balancer").map(xmlToLoadBalancer).toList
-    }
+  def strictToLoadBalancerList(dataStr: Strict): List[LoadBalancer] = {
+    val data = XML.loadString(dataStr.data.utf8String)
+    (data \ "load_balancer").map(xmlToLoadBalancer).toList
+  }
 
-  def index(id: Option[String] = None)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    (pipeline ~> unmarshal[List[LoadBalancer]])(aux2)(Get(Uri("/api/load_balancers").copy(query = Query(Map(
+  def index(id: Option[String] = None)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
+    pipeline(HttpRequest(GET, uri = Uri("/api/load_balancers").copy(query = Query(Map(
       "id" -> id
-    ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))
+    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToLoadBalancerList))
 
   def show(id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    (pipeline ~> unmarshal[LoadBalancer])(aux2)(Get(s"/api/load_balancers/$id"))
-/*
+    pipeline(HttpRequest(GET, uri = Uri(s"/api/load_balancers/$id")))
+
   def create(
     name: String,
     realm_id: String,
     listener_protocol: String,
     listener_balancer_port: Int,
     listener_instance_port: Int
-  )(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    (pipeline ~> unmarshal[Address])(aux2)(Post("/api/load_balancers", FormData(Seq(
+  )(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
+    pipeline(HttpRequest(POST, uri = Uri("/api/load_balancers"), entity = Strict(ContentType(`application/x-www-form-urlencoded`), ByteString(Map(
         "name" -> name, 
         "realm_id" -> realm_id,
         "listener_protocol" -> listener_protocol,
         "listener_balancer_port" -> listener_balancer_port.toString,
         "listener_instance_port" -> listener_instance_port.toString
-    ))))
-*/
+    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToLoadBalancer))
+
   def destroy(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
-    pipeline(Delete(s"/api/load_balancers/$id"))
+    pipeline(HttpRequest(DELETE, uri = Uri(s"/api/load_balancers/$id")))
 
-  def register(id: String, instance_id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
-    pipeline(Post(s"/api/load_balancers/$id/register", FormData(Map("instance_id" -> instance_id))))
+  def register(id: String, instance_id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
+    pipeline(HttpRequest(POST, uri = Uri(s"/api/load_balancers/$id/register"), entity = Strict(ContentType(`application/x-www-form-urlencoded`), ByteString(Map(
+      "instance_id" -> instance_id
+    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToLoadBalancer))
 
-  def unregister(id: String, instance_id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
-    pipeline(Post(s"/api/load_balancers/$id/unregister", FormData(Map("instance_id" -> instance_id))))
+  def unregister(id: String, instance_id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
+    pipeline(HttpRequest(POST, uri = Uri(s"/api/load_balancers/$id/unregister"), entity = Strict(ContentType(`application/x-www-form-urlencoded`), ByteString(Map(
+      "instance_id" -> instance_id
+    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToLoadBalancer))
 
 }

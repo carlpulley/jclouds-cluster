@@ -65,7 +65,8 @@ trait Dependencies {
     // Configuration
     "com.typesafe"            % "config"      % V.CONFIG,
     // Async niceness
-    "org.scala-lang.modules" %% "scala-async" % "0.9.1"
+    "org.scala-lang.modules" %% "scala-async" % "0.9.1",
+    "org.scala-lang"          % "scala-library-all" % V.SCALA
   )
 }
 

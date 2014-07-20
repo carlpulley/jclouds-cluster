@@ -34,8 +34,8 @@ import akka.util.ByteString
 import akka.util.Timeout
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
-import xml.NodeSeq
-import xml.XML
+import scala.xml.NodeSeq
+import scala.xml.XML
 
 case class Bucket(
   id: String,
@@ -63,8 +63,8 @@ object Bucket {
     (data \ "bucket").map(xmlToBucket).toList
   }
 
-  def show(id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]): Future[Bucket] = 
-    pipeline(HttpRequest(GET, uri = Uri(s"/api/buckets/$id")))
+  def show(id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer): Future[Bucket] = 
+    pipeline(HttpRequest(GET, uri = Uri(s"/api/buckets/$id"))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToBucket))
 
   def index(id: Option[String] = None)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
     pipeline(HttpRequest(GET, uri = Uri("/api/buckets").copy(query = Query(Map(
@@ -72,9 +72,9 @@ object Bucket {
     ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToBucketList))
 
   def create(name: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
-    pipeline(HttpRequest(POST, uri = Uri("/api/buckets", entity = Strict(ContentType(`application/x-www-form-urlencoded`), ByteString(Map("name" -> name).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&")))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToInstance))
+    pipeline(HttpRequest(POST, uri = Uri("/api/buckets"), entity = Strict(ContentType(`application/x-www-form-urlencoded`), ByteString(Map("name" -> name).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToBucket))
 
   def destroy(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
-    pipeline(HttpRequest(DELETE, uri = Uri(s"/api/buckets/$id"))
+    pipeline(HttpRequest(DELETE, uri = Uri(s"/api/buckets/$id")))
 
 }

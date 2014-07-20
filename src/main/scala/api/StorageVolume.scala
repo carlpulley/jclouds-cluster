@@ -19,15 +19,23 @@ package api
 
 package deltacloud
 
+import akka.http.model.ContentType
+import akka.http.model.FormData
+import akka.http.model.HttpEntity
+import akka.http.model.HttpEntity.Strict
+import akka.http.model.HttpMethods._
+import akka.http.model.HttpRequest
+import akka.http.model.HttpResponse
+import akka.http.model.MediaTypes._
+import akka.http.model.Uri
+import akka.http.model.Uri.Query
+import akka.stream.FlowMaterializer
+import akka.util.ByteString
+import akka.util.Timeout
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
-import spray.http._
-import spray.http.MediaTypes._
-import spray.http.Uri.Query
-import spray.httpx.TransformerAux.aux2
-import spray.httpx.unmarshalling._
-import spray.client.pipelining._
-import xml.NodeSeq
+import scala.xml.NodeSeq
+import scala.xml.XML
 
 case class Capacity(
   unit: String,
@@ -59,25 +67,27 @@ object StorageVolume {
     StorageVolume(id, capacity, realm_id, state)
   }
 
-  implicit val unmarshalStorageVolume = 
-    Unmarshaller.delegate[NodeSeq, StorageVolume](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`)(xmlToStorageVolume)
+  def strictToStorageVolume(dataStr: Strict): StorageVolume = {
+    val data = XML.loadString(dataStr.data.utf8String)
+    xmlToStorageVolume(data)
+  }
 
-  implicit val unmarshalStorageVolumes = 
-    Unmarshaller.delegate[NodeSeq, List[StorageVolume]](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`) { data => 
-      (data \ "storage_volume").map(xmlToStorageVolume).toList
-    }
+  def strictToStorageVolumeList(dataStr: Strict): List[StorageVolume] = {
+    val data = XML.loadString(dataStr.data.utf8String)
+    (data \ "storage_volume").map(xmlToStorageVolume).toList
+  }
 
   def show(id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    (pipeline ~> unmarshal[StorageVolume])(aux2)(Get(s"/api/storage_volumes/$id"))
+    pipeline(HttpRequest(GET, uri = Uri(s"/api/storage_volumes/$id")))
 
   def index(
     id: Option[String] = None, 
     state: Option[String] = None
-  )(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    (pipeline ~> unmarshal[List[StorageVolume]])(aux2)(Get(Uri("/api/storage_volumes").copy(query = Query(Map(
+  )(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
+    pipeline(HttpRequest(GET, uri = Uri("/api/storage_volumes").copy(query = Query(Map(
       "id" -> id,
       "state" -> state
-    ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))
+    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToStorageVolumeList))
 
   def create(
     snapshot_id: Option[String] = None,
@@ -85,29 +95,29 @@ object StorageVolume {
     realm_id: Option[String] = None,
     name: Option[String] = None,
     description: Option[String] = None
-  )(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    (pipeline ~> unmarshal[StorageVolume])(aux2)(Post("/api/storage_volumes", FormData(Seq(
+  )(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
+    pipeline(HttpRequest(POST, uri = Uri("/api/storage_volumes"), entity = Strict(ContentType(`application/x-www-form-urlencoded`), ByteString(Map(
         "snapshot_id" -> snapshot_id, 
         "capacity" -> capacity, 
         "realm_id" -> realm_id, 
         "name" -> name, 
         "description" -> description
-    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))
+    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToStorageVolume))
 
   def destroy(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
-    pipeline(Delete(s"/api/storage_volumes/$id"))
+    pipeline(HttpRequest(DELETE, uri = Uri(s"/api/storage_volumes/$id")))
 
   def attach(
     id: String,
     instance_id: String,
     device: Option[String] = None
-  )(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
-    pipeline(Post(s"/api/storage_volumes/$id/attach", FormData(Seq(
+  )(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
+    pipeline(HttpRequest(POST, uri = Uri(s"/api/storage_volumes/$id/attach"), entity = Strict(ContentType(`application/x-www-form-urlencoded`), ByteString(Map(
         "instance_id" -> Some(instance_id), 
         "device" -> device
-    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))
+    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToStorageVolume))
 
   def detach(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
-    pipeline(Post(s"/api/storage_volumes/$id/detach"))
+    pipeline(HttpRequest(POST, uri = Uri(s"/api/storage_volumes/$id/detach")))
 
 }

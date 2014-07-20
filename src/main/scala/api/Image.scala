@@ -19,15 +19,23 @@ package api
 
 package deltacloud
 
+import akka.http.model.ContentType
+import akka.http.model.FormData
+import akka.http.model.HttpEntity
+import akka.http.model.HttpEntity.Strict
+import akka.http.model.HttpMethods._
+import akka.http.model.HttpRequest
+import akka.http.model.HttpResponse
+import akka.http.model.MediaTypes._
+import akka.http.model.Uri
+import akka.http.model.Uri.Query
+import akka.stream.FlowMaterializer
+import akka.util.ByteString
+import akka.util.Timeout
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
-import spray.http._
-import spray.http.MediaTypes._
-import spray.http.Uri.Query
-import spray.httpx.TransformerAux.aux2
-import spray.httpx.unmarshalling._
-import spray.client.pipelining._
-import xml.NodeSeq
+import scala.xml.NodeSeq
+import scala.xml.XML
 
 case class Image(
   id: String,
@@ -51,40 +59,42 @@ object Image {
     Image(id, owner_id, architecture, state, hardware_profile_ids, root_type)
   }
 
-  implicit val unmarshalImage = 
-    Unmarshaller.delegate[NodeSeq, Image](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`)(xmlToImage)
+  def strictToImage(dataStr: Strict): Image = {
+    val data = XML.loadString(dataStr.data.utf8String)
+    xmlToImage(data)
+  }
 
-  implicit val unmarshalImages = 
-    Unmarshaller.delegate[NodeSeq, List[Image]](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`) { data => 
-      (data \ "image").map(xmlToImage).toList
-    }
+  def strictToImageList(dataStr: Strict): List[Image] = {
+    val data = XML.loadString(dataStr.data.utf8String)
+    (data \ "image").map(xmlToImage).toList
+  }
 
   def index(
     id: Option[String] = None,
     owner_id: Option[String] = None,
     architecture: Option[String] = None
-  )(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    (pipeline ~> unmarshal[List[Image]])(aux2)(Get(Uri("/api/images").copy(query = Query(Map(
+  )(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
+    pipeline(HttpRequest(GET, uri = Uri("/api/images").copy(query = Query(Map(
       "id" -> id,
       "architecture" -> architecture,
       "owner_id" -> owner_id
-    ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))
+    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToImageList))
 
   def show(id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    (pipeline ~> unmarshal[Image])(aux2)(Get(s"/api/images/$id"))
+    pipeline(HttpRequest(GET, uri = Uri(s"/api/images/$id")))
 
   def create(
     instance_id: String,
     name: Option[String] = None,
     description: Option[String] = None
-  )(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    (pipeline ~> unmarshal[Image])(aux2)(Post("/api/images", FormData(Seq(
+  )(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
+    pipeline(HttpRequest(POST, uri = Uri("/api/images"), entity = Strict(ContentType(`application/x-www-form-urlencoded`), ByteString(Map(
         "instance_id" -> Some(instance_id), 
         "name" -> name, 
         "description" -> description
-    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))
+    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToImage))
 
   def destroy(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
-    pipeline(Delete(s"/api/images/$id"))
+    pipeline(HttpRequest(DELETE, uri = Uri(s"/api/images/$id")))
 
 }

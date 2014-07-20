@@ -19,15 +19,23 @@ package api
 
 package deltacloud
 
+import akka.http.model.ContentType
+import akka.http.model.FormData
+import akka.http.model.HttpEntity
+import akka.http.model.HttpEntity.Strict
+import akka.http.model.HttpMethods._
+import akka.http.model.HttpRequest
+import akka.http.model.HttpResponse
+import akka.http.model.MediaTypes._
+import akka.http.model.Uri
+import akka.http.model.Uri.Query
+import akka.stream.FlowMaterializer
+import akka.util.ByteString
+import akka.util.Timeout
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
-import spray.http._
-import spray.http.MediaTypes._
-import spray.http.Uri.Query
-import spray.httpx.TransformerAux.aux2
-import spray.httpx.unmarshalling._
-import spray.client.pipelining._
-import xml.NodeSeq
+import scala.xml.NodeSeq
+import scala.xml.XML
 
 case class Subnet(
   name: String,
@@ -49,32 +57,34 @@ object Subnet {
     Subnet(name, network_id, address_block, state, typ)
   }
 
-  implicit val unmarshalSubnet = 
-    Unmarshaller.delegate[NodeSeq, Subnet](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`)(xmlToSubnet)
+  def strictToSubnet(dataStr: Strict): Subnet = {
+    val data = XML.loadString(dataStr.data.utf8String)
+    xmlToSubnet(data)
+  }
 
-  implicit val unmarshalSubnets = 
-    Unmarshaller.delegate[NodeSeq, List[Subnet]](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`) { data => 
-      (data \ "subnet").map(xmlToSubnet).toList
-    }
+  def strictToSubnetList(dataStr: Strict): List[Subnet] = {
+    val data = XML.loadString(dataStr.data.utf8String)
+    (data \ "subnet").map(xmlToSubnet).toList
+  }
 
   def index()(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    (pipeline ~> unmarshal[List[Subnet]])(aux2)(Get(Uri("/api/subnets")))
+    pipeline(HttpRequest(GET, uri = Uri("/api/subnets")))
 
   def show(id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    (pipeline ~> unmarshal[Subnet])(aux2)(Get(s"/api/subnets/$id"))
+    pipeline(HttpRequest(GET, uri = Uri(s"/api/subnets/$id")))
 
   def create(
     network_id: String,
     address_block: String,
     name: Option[String] = None
-  )(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    (pipeline ~> unmarshal[Subnet])(aux2)(Post("/api/subnets", FormData(Seq(
+  )(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
+    pipeline(HttpRequest(POST, uri = Uri("/api/subnets"), entity = Strict(ContentType(`application/x-www-form-urlencoded`), ByteString(Map(
         "network_id" -> Some(network_id), 
         "address_block" -> Some(address_block), 
         "name" -> name
-    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))
+    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToSubnet))
 
   def destroy(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
-    pipeline(Delete(s"/api/subnets/$id"))
+    pipeline(HttpRequest(DELETE, uri = Uri(s"/api/subnets/$id")))
 
 }

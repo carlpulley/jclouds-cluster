@@ -19,15 +19,23 @@ package api
 
 package deltacloud
 
+import akka.http.model.ContentType
+import akka.http.model.FormData
+import akka.http.model.HttpEntity
+import akka.http.model.HttpEntity.Strict
+import akka.http.model.HttpMethods._
+import akka.http.model.HttpRequest
+import akka.http.model.HttpResponse
+import akka.http.model.MediaTypes._
+import akka.http.model.Uri
+import akka.http.model.Uri.Query
+import akka.stream.FlowMaterializer
+import akka.util.ByteString
+import akka.util.Timeout
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
-import spray.http._
-import spray.http.MediaTypes._
-import spray.http.Uri.Query
-import spray.httpx.TransformerAux.aux2
-import spray.httpx.unmarshalling._
-import spray.client.pipelining._
-import xml.NodeSeq
+import scala.xml.NodeSeq
+import scala.xml.XML
 
 case class Transition(
   to: String,
@@ -57,18 +65,20 @@ object InstanceState {
     InstanceState(name, transitions)
   }
 
-  implicit val unmarshalInstanceState = 
-    Unmarshaller.delegate[NodeSeq, InstanceState](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`)(xmlToInstanceState)
+  def strictToInstanceState(dataStr: Strict): InstanceState = {
+    val data = XML.loadString(dataStr.data.utf8String)
+    xmlToInstanceState(data)
+  }
 
-  implicit val unmarshalInstanceStates = 
-    Unmarshaller.delegate[NodeSeq, List[InstanceState]](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`) { data => 
-      (data \ "state").map(xmlToInstanceState).toList
-    }
+  def strictToInstanceStateList(dataStr: Strict): List[InstanceState] = {
+    val data = XML.loadString(dataStr.data.utf8String)
+    (data \ "state").map(xmlToInstanceState).toList
+  }
 
   def index()(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    (pipeline ~> unmarshal[List[InstanceState]])(aux2)(Get(Uri("/api/instance_states")))
+    pipeline(HttpRequest(GET, uri = Uri("/api/instance_states")))
 
   def show(name: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    (pipeline ~> unmarshal[InstanceState])(aux2)(Get(Uri(s"/api/instance_states/$name")))
+    pipeline(HttpRequest(GET, uri = Uri(s"/api/instance_states/$name")))
 
 }

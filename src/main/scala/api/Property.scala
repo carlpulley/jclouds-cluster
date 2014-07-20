@@ -19,7 +19,7 @@ package api
 
 package deltacloud
 
-import xml.NodeSeq
+import scala.xml.NodeSeq
 
 sealed trait Property
 case class Fixed(name: String, unit: Option[String], value: String) extends Property

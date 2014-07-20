@@ -34,8 +34,8 @@ import akka.util.ByteString
 import akka.util.Timeout
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
-import xml.NodeSeq
-import xml.XML
+import scala.xml.NodeSeq
+import scala.xml.XML
 
 case class Source(
   name: String,
@@ -93,10 +93,10 @@ object Firewall {
     (data \ "firewall").map(xmlToFirewall).toList
   }
 
-  def index(id: Option[String] = None)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
+  def index(id: Option[String] = None)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
     pipeline(HttpRequest(GET, uri = Uri("/api/firewalls").copy(query = Query(Map(
       "id" -> id
-    ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))
+    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToFirewallList))
 
   def show(id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
     pipeline(HttpRequest(GET, uri = Uri(s"/api/firewalls/$id")))
@@ -104,11 +104,11 @@ object Firewall {
   def create(
     name: String, 
     description: Option[String] = None
-  )(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    pipeline(HttpRequest(POST, uri = Uri("/api/firewalls", FormData(Seq(
+  )(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
+    pipeline(HttpRequest(POST, uri = Uri("/api/firewalls"), entity = Strict(ContentType(`application/x-www-form-urlencoded`), ByteString(Map(
         "name" -> Some(name), 
         "description" -> description
-    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))
+    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToFirewall))
 
   def destroy(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
     pipeline(HttpRequest(DELETE, uri = Uri(s"/api/firewalls/$id")))
@@ -118,11 +118,11 @@ object Firewall {
     protocol: String, 
     port_from: Int, 
     port_to: Int
-  )(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
-    pipeline(HttpRequest(POST, uri = Uri(s"/api/firewalls/$id/rules", FormData(Map(
+  )(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
+    pipeline(HttpRequest(POST, uri = Uri(s"/api/firewalls/$id/rules"), entity = Strict(ContentType(`application/x-www-form-urlencoded`), ByteString(Map(
       "protocol" -> protocol,
       "port_from" -> port_from.toString,
       "port_to" -> port_to.toString
-    ))))
+    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToFirewall))
 
 }

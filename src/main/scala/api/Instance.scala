@@ -34,8 +34,8 @@ import akka.util.ByteString
 import akka.util.Timeout
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
-import xml.NodeSeq
-import xml.XML
+import scala.xml.NodeSeq
+import scala.xml.XML
 
 case class Instance(
   id: String,

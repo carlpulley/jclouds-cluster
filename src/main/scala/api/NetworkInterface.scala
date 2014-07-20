@@ -19,15 +19,23 @@ package api
 
 package deltacloud
 
+import akka.http.model.ContentType
+import akka.http.model.FormData
+import akka.http.model.HttpEntity
+import akka.http.model.HttpEntity.Strict
+import akka.http.model.HttpMethods._
+import akka.http.model.HttpRequest
+import akka.http.model.HttpResponse
+import akka.http.model.MediaTypes._
+import akka.http.model.Uri
+import akka.http.model.Uri.Query
+import akka.stream.FlowMaterializer
+import akka.util.ByteString
+import akka.util.Timeout
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
-import spray.http._
-import spray.http.MediaTypes._
-import spray.http.Uri.Query
-import spray.httpx.TransformerAux.aux2
-import spray.httpx.unmarshalling._
-import spray.client.pipelining._
-import xml.NodeSeq
+import scala.xml.NodeSeq
+import scala.xml.XML
 
 case class NetworkInterface(
   id: String,
@@ -47,32 +55,34 @@ object NetworkInterface {
     NetworkInterface(id, network_ids, instance_ids, ip_address)
   }
 
-  implicit val unmarshalNetworkInterface = 
-    Unmarshaller.delegate[NodeSeq, NetworkInterface](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`)(xmlToNetworkInterface)
+  def strictToNetworkInterface(dataStr: Strict): NetworkInterface = {
+    val data = XML.loadString(dataStr.data.utf8String)
+    xmlToNetworkInterface(data)
+  }
 
-  implicit val unmarshalNetworkInterfaces = 
-    Unmarshaller.delegate[NodeSeq, List[NetworkInterface]](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`) { data => 
-      (data \ "network_interface").map(xmlToNetworkInterface).toList
-    }
+  def strictToNetworkInterfaceList(dataStr: Strict): List[NetworkInterface] = {
+    val data = XML.loadString(dataStr.data.utf8String)
+    (data \ "network_interface").map(xmlToNetworkInterface).toList
+  }
 
   def index()(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    (pipeline ~> unmarshal[List[NetworkInterface]])(aux2)(Get(Uri("/api/network_interfaces")))
+    pipeline(HttpRequest(GET, uri = Uri("/api/network_interfaces")))
 
   def show(id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    (pipeline ~> unmarshal[NetworkInterface])(aux2)(Get(s"/api/network_interfaces/$id"))
+    pipeline(HttpRequest(GET, uri = Uri(s"/api/network_interfaces/$id")))
 
   def create(
     instance: String,
     network: String,
     name: Option[String] = None
-  )(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    (pipeline ~> unmarshal[NetworkInterface])(aux2)(Post("/api/network_interfaces", FormData(Seq(
+  )(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
+    pipeline(HttpRequest(POST, uri = Uri("/api/network_interfaces"), entity = Strict(ContentType(`application/x-www-form-urlencoded`), ByteString(Map(
         "instance" -> Some(instance), 
         "network" -> Some(network),
         "name" -> name
-    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))
+    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToNetworkInterface))
 
   def destroy(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
-    pipeline(Delete(s"/api/network_interfaces/$id"))
+    pipeline(HttpRequest(DELETE, uri = Uri(s"/api/network_interfaces/$id")))
 
 }

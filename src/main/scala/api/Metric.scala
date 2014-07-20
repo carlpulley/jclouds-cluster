@@ -19,15 +19,23 @@ package api
 
 package deltacloud
 
+import akka.http.model.ContentType
+import akka.http.model.FormData
+import akka.http.model.HttpEntity
+import akka.http.model.HttpEntity.Strict
+import akka.http.model.HttpMethods._
+import akka.http.model.HttpRequest
+import akka.http.model.HttpResponse
+import akka.http.model.MediaTypes._
+import akka.http.model.Uri
+import akka.http.model.Uri.Query
+import akka.stream.FlowMaterializer
+import akka.util.ByteString
+import akka.util.Timeout
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
-import spray.http._
-import spray.http.MediaTypes._
-import spray.http.Uri.Query
-import spray.httpx.TransformerAux.aux2
-import spray.httpx.unmarshalling._
-import spray.client.pipelining._
-import xml.NodeSeq
+import scala.xml.NodeSeq
+import scala.xml.XML
 
 case class Metric(
   entity: String,
@@ -44,20 +52,22 @@ object Metric {
     Metric(entity, properties)
   }
 
-  implicit val unmarshalMetric = 
-    Unmarshaller.delegate[NodeSeq, Metric](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`)(xmlToMetric)
+  def strictToMetric(dataStr: Strict): Metric = {
+    val data = XML.loadString(dataStr.data.utf8String)
+    xmlToMetric(data)
+  }
 
-  implicit val unmarshalMetrics = 
-    Unmarshaller.delegate[NodeSeq, List[Metric]](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`) { data => 
-      (data \ "metric").map(xmlToMetric).toList
-    }
+  def strictToMetricList(dataStr: Strict): List[Metric] = {
+    val data = XML.loadString(dataStr.data.utf8String)
+    (data \ "metric").map(xmlToMetric).toList
+  }
 
-  def index(id: Option[String] = None)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    (pipeline ~> unmarshal[List[Metric]])(aux2)(Get(Uri("/api/metrics").copy(query = Query(Map(
+  def index(id: Option[String] = None)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
+    pipeline(HttpRequest(GET, uri = Uri("/api/metrics").copy(query = Query(Map(
       "id" -> id
-    ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))
+    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToMetricList))
 
   def show(id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    (pipeline ~> unmarshal[Metric])(aux2)(Get(s"/api/metrics/$id"))
+    pipeline(HttpRequest(GET, uri = Uri(s"/api/metrics/$id")))
 
 }

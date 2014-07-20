@@ -19,15 +19,23 @@ package api
 
 package deltacloud
 
+import akka.http.model.ContentType
+import akka.http.model.FormData
+import akka.http.model.HttpEntity
+import akka.http.model.HttpEntity.Strict
+import akka.http.model.HttpMethods._
+import akka.http.model.HttpRequest
+import akka.http.model.HttpResponse
+import akka.http.model.MediaTypes._
+import akka.http.model.Uri
+import akka.http.model.Uri.Query
+import akka.stream.FlowMaterializer
+import akka.util.ByteString
+import akka.util.Timeout
 import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
-import spray.http._
-import spray.http.MediaTypes._
-import spray.http.Uri.Query
-import spray.httpx.TransformerAux.aux2
-import spray.httpx.unmarshalling._
-import spray.client.pipelining._
-import xml.NodeSeq
+import scala.xml.NodeSeq
+import scala.xml.XML
 
 case class StorageSnapshot(
   id: String,
@@ -43,34 +51,36 @@ object StorageSnapshot {
     StorageSnapshot(id, storage_volume)
   }
 
-  implicit val unmarshalStorageSnapshot = 
-    Unmarshaller.delegate[NodeSeq, StorageSnapshot](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`)(xmlToStorageSnapshot)
+  def strictToStorageSnapshot(dataStr: Strict): StorageSnapshot = {
+    val data = XML.loadString(dataStr.data.utf8String)
+    xmlToStorageSnapshot(data)
+  }
 
-  implicit val unmarshalStorageSnapshots = 
-    Unmarshaller.delegate[NodeSeq, List[StorageSnapshot]](`text/xml`, `application/xml`, `text/html`, `application/xhtml+xml`) { data => 
-      (data \ "storage_snapshot").map(xmlToStorageSnapshot).toList
-    }
+  def strictToStorageSnapshotList(dataStr: Strict): List[StorageSnapshot] = {
+    val data = XML.loadString(dataStr.data.utf8String)
+    (data \ "storage_snapshot").map(xmlToStorageSnapshot).toList
+  }
 
   def show(id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    (pipeline ~> unmarshal[StorageSnapshot])(aux2)(Get(s"/api/storage_snapshots/$id"))
+    pipeline(HttpRequest(GET, uri = Uri(s"/api/storage_snapshots/$id")))
 
-  def index(id: Option[String] = None)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    (pipeline ~> unmarshal[List[StorageSnapshot]])(aux2)(Get(Uri("/api/storage_snapshots").copy(query = Query(Map(
+  def index(id: Option[String] = None)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
+    pipeline(HttpRequest(GET, uri = Uri("/api/storage_snapshots").copy(query = Query(Map(
       "id" -> id
-    ).flatMap(kv => kv._2.map(v => (kv._1 -> v)))))))
+    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToStorageSnapshotList))
 
   def create(
     volume_id: String,
     name: Option[String] = None,
     description: Option[String] = None
-  )(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
-    (pipeline ~> unmarshal[StorageSnapshot])(aux2)(Post("/api/storage_snapshots", FormData(Seq(
+  )(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
+    pipeline(HttpRequest(POST, uri = Uri("/api/storage_snapshots"), entity = Strict(ContentType(`application/x-www-form-urlencoded`), ByteString(Map(
         "volume_id" -> Some(volume_id), 
         "name" -> name, 
         "description" -> description
-    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))
+    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToStorageSnapshot))
 
   def destroy(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
-    pipeline(Delete(s"/api/storage_snapshots/$id"))
+    pipeline(HttpRequest(DELETE, uri = Uri(s"/api/storage_snapshots/$id")))
 
 }
