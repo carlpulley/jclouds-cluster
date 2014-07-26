@@ -41,6 +41,8 @@ import akka.io.IO
 import akka.kernel.Bootable
 import akka.pattern.ask
 import akka.stream.actor.ActorConsumer
+import akka.stream.actor.ActorConsumer.OnComplete
+import akka.stream.actor.ActorConsumer.OnError
 import akka.stream.actor.ActorConsumer.OnNext
 import akka.stream.actor.ActorProducer
 import akka.stream.FlowMaterializer
@@ -50,6 +52,8 @@ import ClusterMessages._
 import scala.async.Async.async
 import scala.async.Async.await
 import scala.concurrent.duration._
+import scala.util.Failure
+import scala.util.Success
 
 trait HttpServer extends Configuration with Serializer {
   this: ActorConsumer with ActorProducer[ChunkStreamPart] with ActorLogging =>
@@ -114,20 +118,15 @@ class ControllerActor extends ActorLogging with ActorConsumer with ActorProducer
   }
 
   def processingMessages: Receive = {
-    // Ping messages are sent using remote actor messaging
-    // NOTE: currently, Akka streams do not handle remote Actor based subscriptions - the project is 'in JVM' focused
+    // Ping messages are sent via ask futures, using remote actor messaging, to workers
     case OnNext((ping: Ping, worker: ActorRef)) =>
       log.info(s"Sending $ping to $worker")
-      worker ! ping
-
-    // Message instances get serialized and produced into the HTTP message chunking flow
-    case msg: Message if (isActive && totalDemand > 0) =>
-      log.info(s"Received: $msg")
-      onNext(Chunk(serialize(msg)))
-
-    case msg: Message =>
-      // FIXME:
-      log.warning(s"No demand - dropping: $msg")
+      Flow((worker ? ping).mapTo[Message])
+        .foreach {
+          case msg: Message =>
+            log.info(s"Received response: $msg")
+            onNext(Chunk(serialize(msg)))
+        }.consume(materializer)
   }
 
   // Cluster events are only produced into HTTP message chunking flow if consumer demand allows

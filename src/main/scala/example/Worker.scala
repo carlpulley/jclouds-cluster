@@ -36,9 +36,9 @@ class WorkerActor extends Actor with ActorLogging with Configuration {
       val route = s"$tag-$hostname"
 
       if (Random.nextInt(config.getInt("worker.die")) == 1) {
-        sender ! Pong(s"$route says $msg")
+        sender() ! Pong(s"$route says $msg")
       } else {
-        sender ! Ping(msg, route)
+        sender() ! Ping(msg, route)
       }
   }
 
