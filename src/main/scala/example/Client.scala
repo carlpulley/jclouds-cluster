@@ -26,18 +26,13 @@ import akka.actor.Address
 import akka.actor.Cancellable
 import akka.actor.Props
 import akka.actor.RootActorPath
-import akka.cluster.Cluster
 import akka.cluster.ClusterEvent.MemberExited
 import akka.cluster.ClusterEvent.MemberUp
 import akka.contrib.jul.JavaLogging
-import akka.event.LoggingReceive
 import akka.http.Http
 import akka.http.model.ContentTypes._
-import akka.http.model.headers.RawHeader
-import akka.http.model.HttpEntity
 import akka.http.model.HttpEntity.Chunk
 import akka.http.model.HttpEntity.Chunked
-import akka.http.model.HttpEntity.LastChunk
 import akka.http.model.HttpMethods._
 import akka.http.model.HttpRequest
 import akka.http.model.HttpResponse
@@ -45,7 +40,6 @@ import akka.http.model.Uri
 import akka.io.IO
 import akka.pattern.ask
 import akka.stream.actor.ActorConsumer
-import akka.stream.actor.ActorConsumer.OnComplete
 import akka.stream.actor.ActorConsumer.OnNext
 import akka.stream.actor.ActorProducer
 import akka.stream.FlowMaterializer

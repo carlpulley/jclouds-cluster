@@ -17,7 +17,6 @@ package cakesolutions
 
 package example
 
-import akka.actor.Actor
 import akka.actor.ActorLogging
 import akka.actor.ActorRef
 import akka.actor.ActorSelection
@@ -29,18 +28,14 @@ import akka.cluster.ClusterEvent.CurrentClusterState
 import akka.cluster.ClusterEvent.MemberExited
 import akka.cluster.ClusterEvent.MemberUp
 import akka.cluster.MemberStatus
-import akka.event.LoggingReceive
 import akka.http.Http
 import akka.http.model.ContentTypes._
-import akka.http.model.HttpEntity
 import akka.http.model.HttpEntity.Chunk
 import akka.http.model.HttpEntity.Chunked
 import akka.http.model.HttpEntity.ChunkStreamPart
-import akka.http.model.HttpEntity.LastChunk
 import akka.http.model.HttpMethods._
 import akka.http.model.HttpRequest
 import akka.http.model.HttpResponse
-import akka.http.model.StatusCodes
 import akka.http.model.Uri
 import akka.io.IO
 import akka.kernel.Bootable
@@ -55,9 +50,6 @@ import ClusterMessages._
 import scala.async.Async.async
 import scala.async.Async.await
 import scala.concurrent.duration._
-import scala.concurrent.Future
-import scala.util.Failure
-import scala.util.Success
 
 trait HttpServer extends Configuration with Serializer {
   this: ActorConsumer with ActorProducer[ChunkStreamPart] with ActorLogging =>
@@ -123,7 +115,7 @@ class ControllerActor extends ActorLogging with ActorConsumer with ActorProducer
 
   def processingMessages: Receive = {
     // Ping messages are sent using remote actor messaging
-    // NOTE: currently, Akka streams do not handle remote Actor based subscriptions
+    // NOTE: currently, Akka streams do not handle remote Actor based subscriptions - the project is 'in JVM' focused
     case OnNext((ping: Ping, worker: ActorRef)) =>
       log.info(s"Sending $ping to $worker")
       worker ! ping

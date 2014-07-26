@@ -15,11 +15,9 @@
 
 package cakesolutions
 
-import akka.actor.ActorRef
 import akka.actor.ActorSystem
 import akka.actor.Address
 import akka.http.Http
-import akka.http.model
 import akka.http.model.HttpRequest
 import akka.http.model.HttpResponse
 import akka.io.IO
@@ -33,11 +31,7 @@ import cakesolutions.api.deltacloud.Instance
 import cakesolutions.api.deltacloud.Realm
 import com.typesafe.config.ConfigFactory
 import scala.concurrent.duration._
-import scala.concurrent.ExecutionContext
 import scala.concurrent.Future
-import scala.io.Source
-import scala.util.Failure
-import scala.util.Success
 
 class DeltacloudProvisioner(val label: String, joinAddress: Option[Address] = None)(implicit system: ActorSystem) {
   import system.dispatcher
