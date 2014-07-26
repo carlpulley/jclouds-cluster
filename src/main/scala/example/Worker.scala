@@ -15,37 +15,37 @@
 
 package cakesolutions.example
 
+import akka.actor.Actor
 import akka.actor.ActorLogging
 import akka.actor.ActorRef
 import akka.actor.ActorSystem
 import akka.actor.Props
 import akka.cluster.Cluster
-import akka.event.LoggingReceive
 import akka.kernel.Bootable
-import akka.stream.actor.ActorConsumer
-import akka.stream.actor.ActorConsumer.OnNext
-import akka.stream.actor.ActorProducer
 import ClusterMessages._
+import java.net.InetAddress
 import scala.util.Random
 
-class WorkerActor extends ActorLogging with ActorConsumer with ActorProducer[Message] with Configuration {
-  override val requestStrategy = ActorConsumer.WatermarkRequestStrategy(config.getInt("worker.watermark"))
+class WorkerActor extends Actor with ActorLogging with Configuration {
 
-  def receive: Receive = LoggingReceive {
-    case OnNext(ping @ Ping(msg, tag)) =>
-      log.info(s"Received: $ping")
-      val role = Cluster(context.system).selfRoles.head
-      val route = s"$tag-$role"
+  val hostname = InetAddress.getLocalHost().getHostName()
+
+  def receive: Receive = {
+    case ping @ Ping(msg, tag) =>
+      log.info(s"Received: $ping from $sender")
+      val route = s"$tag-$hostname"
 
       if (Random.nextInt(config.getInt("worker.die")) == 1) {
-        sender ! OnNext(Pong(s"$route says $msg"))
+        sender ! Pong(s"$route says $msg")
       } else {
-        sender ! OnNext(Ping(msg, route))
+        sender ! Ping(msg, route)
       }
   }
+
 }
 
 class WorkerNode extends Bootable with Configuration {
+
   implicit val system = ActorSystem(config.getString("akka.system"))
 
   val cluster = Cluster(system)
@@ -60,4 +60,5 @@ class WorkerNode extends Bootable with Configuration {
     worker = None
     system.shutdown
   }
+
 }

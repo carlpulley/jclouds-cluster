@@ -32,6 +32,7 @@ import akka.cluster.ClusterEvent.MemberUp
 import akka.contrib.jul.JavaLogging
 import akka.event.LoggingReceive
 import akka.http.Http
+import akka.http.model.ContentTypes._
 import akka.http.model.headers.RawHeader
 import akka.http.model.HttpEntity
 import akka.http.model.HttpEntity.Chunk
@@ -46,9 +47,11 @@ import akka.pattern.ask
 import akka.stream.actor.ActorConsumer
 import akka.stream.actor.ActorConsumer.OnComplete
 import akka.stream.actor.ActorConsumer.OnNext
+import akka.stream.actor.ActorProducer
 import akka.stream.FlowMaterializer
 import akka.stream.MaterializerSettings
 import akka.stream.scaladsl.Flow
+import akka.util.ByteString
 import ClusterMessages._
 import scala.async.Async.async
 import scala.async.Async.await
@@ -60,7 +63,7 @@ import scala.util.Random
 import scala.util.Success
 
 trait HttpClient extends Configuration with Serializer {
-  this: Actor with ActorLogging =>
+  this: ActorConsumer with ActorLogging =>
 
   import context.dispatcher
 
@@ -75,27 +78,31 @@ trait HttpClient extends Configuration with Serializer {
   def sendRequest(request: HttpRequest): Future[HttpResponse] = 
     connection.flatMap {
       case connect: Http.OutgoingConnection =>
-        Flow(List(request -> 'NoContext)).produceTo(materializer, connect.processor)
-        Flow(connect.processor).map(_._1).toFuture(materializer)
+        Flow(List(request -> 'NoContext))
+          .produceTo(materializer, connect.processor)
+        Flow(connect.processor)
+          .map(_._1)
+          .toFuture(materializer)
     }
 
-  def httpProducer(target: ActorRef) = 
+  val httpConsumer =
     sendRequest(HttpRequest(GET, uri = Uri("/messages"))).map {
-      case HttpResponse(_, _, Chunked(_, chunks), _) =>
-        Flow(chunks).foreach {
+      case response @ HttpResponse(_, _, Chunked(_, chunks), _) =>
+        log.info(s"Received: $response")
+        Flow(chunks).map {
           case Chunk(data, _) =>
             val msg = deserialize(data.toArray[Byte]).get
-            log.info(s"Received via /messages: $msg")
-            target ! OnNext(msg)
-
-          case LastChunk(_, _) =>
-            log.info("Closing: /messages")
-            target ! OnComplete
-        }.consume(materializer)
+            log.info(s"Received via GET /messages: $msg")
+            msg
+        }.produceTo(materializer, ActorConsumer(self))
     }
+
+  val httpProducer =
+    sendRequest(HttpRequest(PUT, uri = Uri("/messages"), entity = Chunked(`application/octet-stream`, ActorProducer[ByteString](self), materializer)))
+
 }
 
-class ClientActor extends ActorLogging with ActorConsumer with HttpClient with Configuration with Serializer {
+class ClientActor extends ActorLogging with ActorConsumer with ActorProducer[ByteString] with HttpClient with Configuration with Serializer {
 
   import context.dispatcher
 
@@ -103,52 +110,70 @@ class ClientActor extends ActorLogging with ActorConsumer with HttpClient with C
 
   var addresses = Map.empty[Address, ActorSelection]
 
-  // HTTP flow messages are materialised to actor messages from the controller
-  val controllerSubscription: Cancellable = context.system.scheduler.schedule(0.seconds, config.getDuration("client.reconnect", SECONDS).seconds) {
-    httpProducer(self).onComplete {
+  val consumerSubscription: Cancellable = context.system.scheduler.schedule(0.seconds, config.getDuration("client.reconnect", SECONDS).seconds) {
+    httpConsumer.onComplete {
       case Success(_) =>
-        log.info("Successfully connected to Controller actor")
-        controllerSubscription.cancel()
+        log.info("Successfully connected consumer to Controller")
+        consumerSubscription.cancel()
         context.become(processingMessages orElse clusterMessages)
 
       case Failure(exn) =>
-        log.error(s"Failed to connect to Controller: $exn")
+        log.error(s"Failed to connect consumer to Controller: $exn")
+    }
+  }
+
+  val producerSubscription: Cancellable = context.system.scheduler.schedule(0.seconds, config.getDuration("client.reconnect", SECONDS).seconds) {
+    httpProducer.onComplete {
+      case Success(_) =>
+        log.info("Successfully connected producer to Controller")
+        producerSubscription.cancel()
+
+      case Failure(exn) =>
+        log.error(s"Failed to connect producer to Controller: $exn")
     }
   }
 
   override def postStop() = {
-    controllerSubscription.cancel()
+    consumerSubscription.cancel()
+    producerSubscription.cancel()
   }
 
-  def processingMessages: Receive = LoggingReceive {
-    case ping: Ping if (addresses.size > 0) =>
-      self ! OnNext(ping)
-
-    case ping: Ping =>
-      log.warning(s"Ignoring: $ping")
-
-    case OnNext(ping: Ping) if (addresses.size > 0) =>
+  def processingMessages: Receive = {
+    case ping: Ping if (addresses.size > 0 && isActive && totalDemand > 0) =>
       log.info(s"Received: $ping")
       val node = addresses.values.toList(Random.nextInt(addresses.size))
-      sendRequest(HttpRequest(PUT, uri = Uri("/ping"), entity = HttpEntity(serialize(ping)), headers = List(RawHeader("Worker", node.toSerializationFormat))))
+      onNext(ByteString(serialize((ping, node))))
+
+    case ping: Ping if (addresses.size == 0) =>
+      log.warning(s"No workers - ignoring: $ping")
+
+    case ping: Ping =>
+      log.warning(s"No demand - ignoring: $ping")
+
+    case OnNext(ping: Ping) if (addresses.size > 0 && isActive && totalDemand > 0) =>
+      log.info(s"Internally received: $ping")
+      val node = addresses.values.toList(Random.nextInt(addresses.size))
+      onNext(ByteString(serialize((ping, node))))
+
+    case OnNext(ping: Ping) if (addresses.size == 0) =>
+      log.warning(s"No workers - ignoring: $ping")
 
     case OnNext(ping: Ping) =>
-      log.warning(s"Ignoring: $ping")
+      log.warning(s"No demand - ignoring: $ping")
 
     case OnNext(pong: Pong) =>
       log.info(pong.toString)
   }
 
-  def clusterMessages: Receive = LoggingReceive {
-    case OnNext(msg @ MemberUp(member)) if (member.roles.nonEmpty) =>
-      log.info(s"Received: $msg")
+  def clusterMessages: Receive = {
+    case OnNext(msg @ MemberUp(member)) if (member.roles.contains("worker")) =>
+      log.info(s"Received: $msg with roles: ${member.roles}")
       val node = member.address
       val act = context.actorSelection(RootActorPath(node) / "user" / "worker")
-    
       addresses = addresses + (node -> act)
 
-    case OnNext(msg: MemberUp) =>
-      log.warning(s"Ignoring: $msg")
+    case OnNext(msg @ MemberUp(member)) =>
+      log.warning(s"Member has no worker role - ignoring: $msg with roles: ${member.roles}")
 
     case OnNext(msg @ MemberExited(member)) =>
       log.info(s"Received: $msg")
@@ -227,10 +252,7 @@ class ClientNode extends Configuration with JavaLogging {
       |  # Initial attributes used by the cookbooks
       |  initial_attributes:
       |     java:
-      |       install_flavor: "oracle"
       |       jdk_version: 7
-      |       oracle:
-      |         accept_oracle_download_terms: true
   """
 
   // Here we provision our cluster controller node
@@ -287,7 +309,7 @@ class ClientNode extends Configuration with JavaLogging {
       |
       $common_config
       |     cluster:
-      |       role: "$label"
+      |       role: "worker"
       |       mainClass: "cakesolutions.example.WorkerNode"
       |       seedNode: "${joinAddress.toString}"
       |""".stripMargin

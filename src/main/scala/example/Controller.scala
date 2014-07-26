@@ -17,8 +17,10 @@ package cakesolutions
 
 package example
 
+import akka.actor.Actor
 import akka.actor.ActorLogging
 import akka.actor.ActorRef
+import akka.actor.ActorSelection
 import akka.actor.ActorSystem
 import akka.actor.Cancellable
 import akka.actor.Props
@@ -34,6 +36,7 @@ import akka.http.model.HttpEntity
 import akka.http.model.HttpEntity.Chunk
 import akka.http.model.HttpEntity.Chunked
 import akka.http.model.HttpEntity.ChunkStreamPart
+import akka.http.model.HttpEntity.LastChunk
 import akka.http.model.HttpMethods._
 import akka.http.model.HttpRequest
 import akka.http.model.HttpResponse
@@ -57,44 +60,42 @@ import scala.util.Failure
 import scala.util.Success
 
 trait HttpServer extends Configuration with Serializer {
-  this: ActorProducer[ChunkStreamPart] with ActorLogging =>
+  this: ActorConsumer with ActorProducer[ChunkStreamPart] with ActorLogging =>
 
   import context.dispatcher
 
+  val cluster = Cluster(context.system)
   val materializer = FlowMaterializer(MaterializerSettings())
   val host = Cluster(context.system).selfAddress.host.getOrElse("localhost")
   val port = config.getInt("controller.port")
 
   val bindingFuture = IO(Http)(context.system) ? Http.Bind(interface = host, port = port)
 
-  val requestHandler: HttpRequest => Future[HttpResponse] = {
-    case msg @ HttpRequest(PUT, Uri.Path("/ping"), hdrs, entity, _) if (hdrs.exists(_.name == "Worker")) =>
-      log.info(s"Received: $msg")
-      async {
-        val path = hdrs.find(_.name == "Worker").get.value
-        val data = await(entity.toStrict(timeout.duration, materializer)).data
-        serialization.deserialize(data.toArray[Byte], classOf[Ping]) match {
-          case Success(ping) =>
-            context.actorSelection(path) ! OnNext(ping)
-            HttpResponse()
-          case Failure(exn) =>
-            log.error(s"Failed to deserialize Ping message: $exn")
-            HttpResponse(status = StatusCodes.UnprocessableEntity)
-        }
-      }
+  val requestHandler: HttpRequest => HttpResponse = {
+    case request @ HttpRequest(PUT, Uri.Path("/messages"), _, Chunked(_, chunks), _) =>
+      log.info(s"Received: $request")
+      Flow(chunks).mapFuture {
+        case Chunk(data, _) =>
+          val (ping, target) = serialization.deserialize(data.toArray[Byte], classOf[(Ping, ActorSelection)]).get
+          log.info(s"Received via PUT /messages: $ping destined for $target")
+          async {
+            (ping, await(target.resolveOne()))
+          }
+      }.produceTo(materializer, ActorConsumer[(Ping, ActorRef)](self))
+      HttpResponse()
 
-    case msg @ HttpRequest(GET, Uri.Path("/messages"), _, _, _) =>
-      log.info(s"Received: $msg")
-      Future {
-        HttpResponse(entity = Chunked(`application/octet-stream`, ActorProducer[ChunkStreamPart](self)))
-      }
+    case request @ HttpRequest(GET, Uri.Path("/messages"), _, _, _) =>
+      log.info(s"Received: $request")
+      HttpResponse(entity = Chunked(`application/octet-stream`, ActorProducer[ChunkStreamPart](self)))
   }
 
   bindingFuture foreach {
     case Http.ServerBinding(localAddress, connectionStream) =>
       Flow(connectionStream).foreach {
         case Http.IncomingConnection(_, requestProducer, responseConsumer) =>
-          Flow(requestProducer).mapFuture(requestHandler).produceTo(materializer, responseConsumer)
+          Flow(requestProducer)
+            .map(requestHandler)
+            .produceTo(materializer, responseConsumer)
       }.consume(materializer)
   }
 }
@@ -105,7 +106,6 @@ class ControllerActor extends ActorLogging with ActorConsumer with ActorProducer
 
   override val requestStrategy = ActorConsumer.WatermarkRequestStrategy(config.getInt("controller.watermark"))
 
-  val cluster = Cluster(context.system)
   var membershipScheduler: Option[Cancellable] = None
 
   // Ensure that any lost cluster membership information (from back pressure controls) can be recovered
@@ -121,15 +121,25 @@ class ControllerActor extends ActorLogging with ActorConsumer with ActorProducer
     membershipScheduler = None
   }
 
-  // Message instances get serialized and produced into the HTTP message chunking flow
-  def processingMessages: Receive = LoggingReceive {
-    case OnNext(msg: Message) =>
+  def processingMessages: Receive = {
+    // Ping messages are sent using remote actor messaging
+    // NOTE: currently, Akka streams do not handle remote Actor based subscriptions
+    case OnNext((ping: Ping, worker: ActorRef)) =>
+      log.info(s"Sending $ping to $worker")
+      worker ! ping
+
+    // Message instances get serialized and produced into the HTTP message chunking flow
+    case msg: Message if (isActive && totalDemand > 0) =>
       log.info(s"Received: $msg")
       onNext(Chunk(serialize(msg)))
+
+    case msg: Message =>
+      // FIXME:
+      log.warning(s"No demand - dropping: $msg")
   }
 
   // Cluster events are only produced into HTTP message chunking flow if consumer demand allows
-  def clusterMessages: Receive = LoggingReceive {
+  def clusterMessages: Receive = {
     case state: CurrentClusterState =>
       log.info(s"Received: $state")
       for (mem <- state.members.filter(_.status == MemberStatus.Up)) {
@@ -144,14 +154,14 @@ class ControllerActor extends ActorLogging with ActorConsumer with ActorProducer
       onNext(Chunk(serialize(msg)))
 
     case msg: MemberUp =>
-      log.warning(s"Ignoring: $msg")
+      log.warning(s"No demand - ignoring: $msg")
 
     case msg: MemberExited if (isActive && totalDemand > 0) =>
       log.info(s"Received: $msg")
       onNext(Chunk(serialize(msg)))
 
     case msg: MemberExited =>
-      log.warning(s"Ignoring: $msg")
+      log.warning(s"No demand - ignoring: $msg")
   }
 
   def receive = 

@@ -51,6 +51,13 @@ directory "/usr/share/#{node[:cluster][:service]}/config" do
   action :create
 end
 
+template "/usr/share/#{node[:cluster][:service]}/config/akka-actor.conf" do
+  source "akka-actor.conf.erb"
+  owner "root"
+  group "root"
+  mode "0644"
+end
+
 template "/usr/share/#{node[:cluster][:service]}/config/akka-remote.conf" do
   source "akka-remote.conf.erb"
   owner "root"
