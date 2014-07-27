@@ -17,15 +17,7 @@ package cakesolutions
 
 package example
 
-import akka.actor.Actor
-import akka.actor.ActorLogging
-import akka.actor.ActorRef
-import akka.actor.ActorSelection
-import akka.actor.ActorSystem
-import akka.actor.Address
-import akka.actor.Cancellable
-import akka.actor.Props
-import akka.actor.RootActorPath
+import akka.actor._
 import akka.cluster.ClusterEvent.MemberExited
 import akka.cluster.ClusterEvent.MemberUp
 import akka.contrib.jul.JavaLogging
@@ -33,6 +25,7 @@ import akka.http.Http
 import akka.http.model.ContentTypes._
 import akka.http.model.HttpEntity.Chunk
 import akka.http.model.HttpEntity.Chunked
+import akka.http.model.HttpEntity.LastChunk
 import akka.http.model.HttpMethods._
 import akka.http.model.HttpRequest
 import akka.http.model.HttpResponse
@@ -57,7 +50,7 @@ import scala.util.Random
 import scala.util.Success
 
 trait HttpClient extends Configuration with Serializer {
-  this: ActorConsumer with ActorLogging =>
+  this: Actor with ActorLogging =>
 
   import context.dispatcher
 
@@ -83,12 +76,18 @@ trait HttpClient extends Configuration with Serializer {
     sendRequest(HttpRequest(GET, uri = Uri("/messages"))).map {
       case response @ HttpResponse(_, _, Chunked(_, chunks), _) =>
         log.info(s"Received: $response")
-        Flow(chunks).map {
-          case Chunk(data, _) =>
-            val msg = deserialize(data.toArray[Byte]).get
-            log.info(s"Received via GET /messages: $msg")
-            msg
-        }.produceTo(materializer, ActorConsumer(self))
+        Flow(chunks)
+          .mapConcat {
+            case Chunk(data, _) =>
+              val msg = deserialize(data.toArray[Byte]).get
+              log.info(s"Received via GET /messages: $msg")
+              List(msg)
+
+            case LastChunk(_, _) =>
+              log.error("GET /messages closed")
+              List.empty
+          }
+          .produceTo(materializer, ActorConsumer(self))
     }
 
   val httpProducer =
@@ -249,13 +248,24 @@ class ClientNode extends Configuration with JavaLogging {
       |       jdk_version: 7
   """
 
-  // Here we provision our cluster controller node
-  val provisionControllerNode: Future[Unit] = {
-    val node = new DeltacloudProvisioner("controller")
+  object Connection {
+    def open(): Unit = {
+      require(controller.nonEmpty)
 
-    controller = Some(node)
+      // Here we connect via the gateways external IP address (this is port forwarded to the controller's private or internal IP address)
+      client = Some(system.actorOf(Props[ClientActor], "Client"))
+    }
 
-    node.bootstrap(s"""#cloud-config
+    def close(): Unit = ??? // TODO:
+  }
+
+  object Provision {
+    val controllerNode: Future[Unit] = {
+      val node = new DeltacloudProvisioner("controller")
+
+      controller = Some(node)
+
+      node.bootstrap(s"""#cloud-config
       |
       |hostname: controller
       |
@@ -264,54 +274,47 @@ class ClientNode extends Configuration with JavaLogging {
       |       role: "controller"
       |       mainClass: "cakesolutions.example.ControllerNode"
       |""".stripMargin
-    ).recover {
-      case exn =>
-        log.error(s"Failed to provision the 'controller' node: $exn")
-        controller = None
-        exn.printStackTrace()
+      ).recover {
+        case exn =>
+          log.error(s"Failed to provision the 'controller' node: $exn")
+          controller = None
+          exn.printStackTrace()
+      }
     }
-  }
 
-  def connectToController(): Unit = {
-    require(controller.nonEmpty)
+    def workerNode(label: String): Future[Unit] = {
+      require(controller.nonEmpty)
 
-    // Here we connect via the gateway external IP address (this is port forwarded to the controller's private or internal IP address)
-    client = Some(system.actorOf(Props[ClientActor], "Client"))
-  }
+      async {
+        // Here, workers connect to the controller via its private or internal IP address
+        val private_addresses = await(controller.get.private_addresses)
 
-  def provisionWorkerNode(label: String): Future[Unit] = {
-    require(controller.nonEmpty)
-
-    async {
-      // Here, workers connect to the controller via its private or internal IP address
-      val private_addresses = await(controller.get.private_addresses)
-
-      provisionWorkerNode(label, private_addresses.head.ip)
+        workerNode(label, private_addresses.head.ip)
+      }
     }
-  }
 
-  // Here we provision our cluster worker nodes
-  def provisionWorkerNode(label: String, ipAddress: String): Future[Unit] = {
-    val joinAddress = Address("akka.tcp", systemName, ipAddress, 2552)
-    val node = new DeltacloudProvisioner(label, Some(joinAddress))
+    private def workerNode(label: String, ipAddress: String): Future[Unit] = {
+        val joinAddress = Address("akka.tcp", systemName, ipAddress, 2552)
+        val node = new DeltacloudProvisioner(label, Some(joinAddress))
 
-    machines = machines + (label -> node)
+        machines = machines + (label -> node)
 
-    node.bootstrap(s"""#cloud-config
-      |
-      |hostname: $label
-      |
-      $common_config
-      |     cluster:
-      |       role: "worker"
-      |       mainClass: "cakesolutions.example.WorkerNode"
-      |       seedNode: "${joinAddress.toString}"
-      |""".stripMargin
-    ).recover {
-      case exn =>
-        log.error(s"Failed to provision the '$label' node: $exn")
-        machines = machines - label
-    }
+        node.bootstrap(s"""#cloud-config
+        |
+        |hostname: $label
+        |
+        $common_config
+        |     cluster:
+        |       role: "worker"
+        |       mainClass: "cakesolutions.example.WorkerNode"
+        |       seedNode: "${joinAddress.toString}"
+        |""".stripMargin
+        ).recover {
+          case exn =>
+            log.error(s"Failed to provision the '$label' node: $exn")
+            machines = machines - label
+        }
+      }
   }
 
   def shutdown: Future[Unit] = {

@@ -17,6 +17,7 @@ package cakesolutions
 
 package example
 
+import akka.actor.Actor
 import akka.actor.ActorLogging
 import akka.actor.ActorRef
 import akka.actor.ActorSelection
@@ -33,6 +34,7 @@ import akka.http.model.ContentTypes._
 import akka.http.model.HttpEntity.Chunk
 import akka.http.model.HttpEntity.Chunked
 import akka.http.model.HttpEntity.ChunkStreamPart
+import akka.http.model.HttpEntity.LastChunk
 import akka.http.model.HttpMethods._
 import akka.http.model.HttpRequest
 import akka.http.model.HttpResponse
@@ -41,8 +43,6 @@ import akka.io.IO
 import akka.kernel.Bootable
 import akka.pattern.ask
 import akka.stream.actor.ActorConsumer
-import akka.stream.actor.ActorConsumer.OnComplete
-import akka.stream.actor.ActorConsumer.OnError
 import akka.stream.actor.ActorConsumer.OnNext
 import akka.stream.actor.ActorProducer
 import akka.stream.FlowMaterializer
@@ -52,11 +52,10 @@ import ClusterMessages._
 import scala.async.Async.async
 import scala.async.Async.await
 import scala.concurrent.duration._
-import scala.util.Failure
-import scala.util.Success
+import scala.concurrent.Future
 
 trait HttpServer extends Configuration with Serializer {
-  this: ActorConsumer with ActorProducer[ChunkStreamPart] with ActorLogging =>
+  this: Actor with ActorLogging =>
 
   import context.dispatcher
 
@@ -70,14 +69,22 @@ trait HttpServer extends Configuration with Serializer {
   val requestHandler: HttpRequest => HttpResponse = {
     case request @ HttpRequest(PUT, Uri.Path("/messages"), _, Chunked(_, chunks), _) =>
       log.info(s"Received: $request")
-      Flow(chunks).mapFuture {
-        case Chunk(data, _) =>
-          val (ping, target) = serialization.deserialize(data.toArray[Byte], classOf[(Ping, ActorSelection)]).get
-          log.info(s"Received via PUT /messages: $ping destined for $target")
-          async {
-            (ping, await(target.resolveOne()))
-          }
-      }.produceTo(materializer, ActorConsumer[(Ping, ActorRef)](self))
+      Flow(chunks)
+        .mapFuture {
+          case Chunk(data, _) =>
+            val (ping, target) = serialization.deserialize(data.toArray[Byte], classOf[(Ping, ActorSelection)]).get
+            log.info(s"Received via PUT /messages: $ping destined for $target")
+            async {
+              Some((ping, await(target.resolveOne())))
+            }
+
+          case LastChunk(_, _) =>
+            log.error("PUT /messages closed")
+            Future { None }
+        }
+        .filter(_.nonEmpty)
+        .map(_.get)
+        .produceTo(materializer, ActorConsumer[(Ping, ActorRef)](self))
       HttpResponse()
 
     case request @ HttpRequest(GET, Uri.Path("/messages"), _, _, _) =>
@@ -118,7 +125,7 @@ class ControllerActor extends ActorLogging with ActorConsumer with ActorProducer
   }
 
   def processingMessages: Receive = {
-    // Ping messages are sent via ask futures, using remote actor messaging, to workers
+    // Ping messages are sent via ask futures to workers
     case OnNext((ping: Ping, worker: ActorRef)) =>
       log.info(s"Sending $ping to $worker")
       Flow((worker ? ping).mapTo[Message])
