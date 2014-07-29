@@ -18,6 +18,7 @@ package cakesolutions
 package example
 
 import akka.actor.Actor
+import akka.actor.ActorDSL._
 import akka.actor.ActorLogging
 import akka.actor.ActorRef
 import akka.actor.ActorSelection
@@ -66,6 +67,22 @@ trait HttpServer extends Configuration with Serializer {
 
   val bindingFuture = IO(Http)(context.system) ? Http.Bind(interface = host, port = port)
 
+  // TODO: this should be per worker
+  val workerConsumer = actor(new Act with ActorConsumer {
+    override val requestStrategy = ActorConsumer.ZeroRequestStrategy
+
+    request(1)
+
+    become {
+      case OnNext((ping: Ping, worker: ActorRef)) =>
+        log.info(s"Sending $ping to $worker")
+        worker.tell(ping, this.self)
+
+      case "request++" =>
+        request(1)
+    }
+  })
+
   val requestHandler: HttpRequest => HttpResponse = {
     case request @ HttpRequest(PUT, Uri.Path("/messages"), _, Chunked(_, chunks), _) =>
       log.info(s"Received: $request")
@@ -84,7 +101,7 @@ trait HttpServer extends Configuration with Serializer {
         }
         .filter(_.nonEmpty)
         .map(_.get)
-        .produceTo(materializer, ActorConsumer[(Ping, ActorRef)](self))
+        .produceTo(materializer, ActorConsumer[(Ping, ActorRef)](workerConsumer))
       HttpResponse()
 
     case request @ HttpRequest(GET, Uri.Path("/messages"), _, _, _) =>
@@ -125,15 +142,10 @@ class ControllerActor extends ActorLogging with ActorConsumer with ActorProducer
   }
 
   def processingMessages: Receive = {
-    // Ping messages are sent via ask futures to workers
-    case OnNext((ping: Ping, worker: ActorRef)) =>
-      log.info(s"Sending $ping to $worker")
-      Flow((worker ? ping).mapTo[Message])
-        .foreach {
-          case msg: Message =>
-            log.info(s"Received response: $msg")
-            onNext(Chunk(serialize(msg)))
-        }.consume(materializer)
+    case msg: Message =>
+      log.info(s"Received response: $msg")
+      workerConsumer ! "request++"
+      onNext(Chunk(serialize(msg)))
   }
 
   // Cluster events are only produced into HTTP message chunking flow if consumer demand allows
@@ -162,7 +174,7 @@ class ControllerActor extends ActorLogging with ActorConsumer with ActorProducer
       log.warning(s"No demand - ignoring: $msg")
   }
 
-  def receive = 
+  def receive =
     processingMessages orElse
       clusterMessages
 }
