@@ -22,9 +22,35 @@ import akka.actor.ActorSystem
 import akka.actor.Props
 import akka.cluster.Cluster
 import akka.kernel.Bootable
+import akka.stream.actor.ActorConsumer
+import akka.stream.actor.ActorConsumer.OnNext
+import akka.stream.actor.ActorProducer
 import ClusterMessages._
 import java.net.InetAddress
 import scala.util.Random
+
+class WorkerController extends ActorConsumer with ActorProducer[Message] with ActorLogging {
+
+  override val requestStrategy = ActorConsumer.ZeroRequestStrategy
+
+  request(1)
+
+  def receive = {
+    case OnNext((ping: Ping, worker: ActorRef)) =>
+      log.info(s"Sending $ping to $worker")
+      worker ! ping
+
+    case msg: Message if (isActive && totalDemand > 0) =>
+      log.info(s"Producing $msg to stream")
+      request(1)
+      onNext(msg)
+
+    case msg: Message if (isActive && totalDemand == 0) =>
+      log.info(s"No demand - requeuing $msg")
+      self ! msg
+  }
+
+}
 
 class WorkerActor extends Actor with ActorLogging with Configuration {
 

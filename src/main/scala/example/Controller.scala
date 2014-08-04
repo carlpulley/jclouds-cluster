@@ -18,7 +18,6 @@ package cakesolutions
 package example
 
 import akka.actor.Actor
-import akka.actor.ActorDSL._
 import akka.actor.ActorLogging
 import akka.actor.ActorRef
 import akka.actor.ActorSelection
@@ -48,14 +47,50 @@ import akka.stream.actor.ActorConsumer.OnNext
 import akka.stream.actor.ActorProducer
 import akka.stream.FlowMaterializer
 import akka.stream.MaterializerSettings
+import akka.stream.scaladsl.Duct
 import akka.stream.scaladsl.Flow
 import ClusterMessages._
+import org.reactivestreams.api.Consumer
+import org.reactivestreams.api.Producer
 import scala.async.Async.async
 import scala.async.Async.await
 import scala.concurrent.duration._
 import scala.concurrent.Future
 
-trait HttpServer extends Configuration with Serializer {
+trait ControllerWorkflow extends Configuration with Serializer {
+  this: Actor with ActorLogging =>
+
+  import context.dispatcher
+
+  def chunkedFlow: Duct[ChunkStreamPart, (Ping, ActorRef)] =
+     Duct[ChunkStreamPart]
+      .mapFuture {
+        case Chunk(data, _) =>
+          val (ping, target) = serialization.deserialize(data.toArray[Byte], classOf[(Ping, ActorSelection)]).get
+          log.info(s"Received via PUT /messages: $ping destined for $target")
+          async {
+            val targetRef = await(target.resolveOne())
+
+            Some((ping, targetRef))
+          }
+
+        case LastChunk(_, _) =>
+          log.error("PUT /messages closed")
+          Future { None }
+      }
+      .filter(_.nonEmpty)
+      .map(_.get)
+
+  val worker = context.actorOf(Props[WorkerController])
+
+  def workerFlow: Consumer[(Ping, ActorRef)] =
+    ActorConsumer(worker)
+
+  def resultFlow: Producer[Message] =
+    ActorProducer(worker)
+}
+
+trait HttpServer extends ControllerWorkflow with Configuration with Serializer {
   this: Actor with ActorLogging =>
 
   import context.dispatcher
@@ -67,41 +102,19 @@ trait HttpServer extends Configuration with Serializer {
 
   val bindingFuture = IO(Http)(context.system) ? Http.Bind(interface = host, port = port)
 
-  // TODO: this should be per worker
-  val workerConsumer = actor(new Act with ActorConsumer {
-    override val requestStrategy = ActorConsumer.ZeroRequestStrategy
-
-    request(1)
-
-    become {
-      case OnNext((ping: Ping, worker: ActorRef)) =>
-        log.info(s"Sending $ping to $worker")
-        worker.tell(ping, this.self)
-
-      case "request++" =>
-        request(1)
-    }
-  })
-
   val requestHandler: HttpRequest => HttpResponse = {
     case request @ HttpRequest(PUT, Uri.Path("/messages"), _, Chunked(_, chunks), _) =>
       log.info(s"Received: $request")
-      Flow(chunks)
-        .mapFuture {
-          case Chunk(data, _) =>
-            val (ping, target) = serialization.deserialize(data.toArray[Byte], classOf[(Ping, ActorSelection)]).get
-            log.info(s"Received via PUT /messages: $ping destined for $target")
-            async {
-              Some((ping, await(target.resolveOne())))
-            }
 
-          case LastChunk(_, _) =>
-            log.error("PUT /messages closed")
-            Future { None }
-        }
-        .filter(_.nonEmpty)
-        .map(_.get)
-        .produceTo(materializer, ActorConsumer[(Ping, ActorRef)](workerConsumer))
+      val (chunkConsumer, msgProducer) = chunkedFlow.build(materializer)
+
+      Flow(chunks)
+        .produceTo(materializer, chunkConsumer)
+      Flow(msgProducer)
+        .produceTo(materializer, workerFlow)
+      Flow(resultFlow)
+        .produceTo(materializer, ActorConsumer[Message](self))
+
       HttpResponse()
 
     case request @ HttpRequest(GET, Uri.Path("/messages"), _, _, _) =>
@@ -142,10 +155,13 @@ class ControllerActor extends ActorLogging with ActorConsumer with ActorProducer
   }
 
   def processingMessages: Receive = {
-    case msg: Message =>
+    case OnNext(msg: Message) if (isActive && totalDemand > 0) =>
       log.info(s"Received response: $msg")
-      workerConsumer ! "request++"
       onNext(Chunk(serialize(msg)))
+
+    case OnNext(msg: Message) if (!isActive || totalDemand == 0) =>
+      log.warning(s"No demand - requeuing: $msg")
+      self ! OnNext(msg) // FIXME: does this impact demand and requested counts?
   }
 
   // Cluster events are only produced into HTTP message chunking flow if consumer demand allows
