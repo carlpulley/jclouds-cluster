@@ -164,7 +164,7 @@ class ClientActor
       log.warning(s"[Internal] No demand - ignoring: $ping")
 
     case OnNext(pong: Pong) =>
-      log.info(pong.toString)
+      log.info(s"${Console.RED}${pong.toString}${Console.RESET}")
   }
 
   def clusterMessages: Receive = {
