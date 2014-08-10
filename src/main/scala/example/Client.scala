@@ -144,15 +144,15 @@ class ClientActor extends ActorLogging with ActorConsumer with ActorProducer[Byt
       log.warning(s"No demand - ignoring: $ping")
 
     case OnNext(ping: Ping) if (addresses.size > 0 && isActive && totalDemand > 0) =>
-      log.info(s"Internally received: $ping")
+      log.info(s"[Internal] Received: $ping")
       val node = addresses.values.toList(Random.nextInt(addresses.size))
       onNext(ByteString(serialize((ping, node))))
 
     case OnNext(ping: Ping) if (addresses.size == 0) =>
-      log.warning(s"No workers - ignoring: $ping")
+      log.warning(s"[Internal] No workers - ignoring: $ping")
 
     case OnNext(ping: Ping) =>
-      log.warning(s"No demand - ignoring: $ping")
+      log.warning(s"[Internal] No demand - ignoring: $ping")
 
     case OnNext(pong: Pong) =>
       log.info(pong.toString)

@@ -63,7 +63,7 @@ trait ControllerWorkflow extends Configuration with Serializer {
   import context.dispatcher
 
   def chunkedFlow: Duct[ChunkStreamPart, (Ping, ActorRef)] =
-     Duct[ChunkStreamPart]
+    Duct[ChunkStreamPart]
       .mapFuture {
         case Chunk(data, _) =>
           val (ping, target) = serialization.deserialize(data.toArray[Byte], classOf[(Ping, ActorSelection)]).get
