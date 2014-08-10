@@ -57,7 +57,10 @@ import scala.async.Async.await
 import scala.concurrent.duration._
 import scala.concurrent.Future
 
-trait ControllerWorkflow extends Configuration with Serializer {
+trait ControllerWorkflow 
+  extends Configuration 
+  with Serializer {
+    
   this: Actor with ActorLogging =>
 
   import context.dispatcher
@@ -90,7 +93,11 @@ trait ControllerWorkflow extends Configuration with Serializer {
     ActorProducer(worker)
 }
 
-trait HttpServer extends ControllerWorkflow with Configuration with Serializer {
+trait HttpServer 
+  extends ControllerWorkflow 
+  with Configuration 
+  with Serializer {
+
   this: Actor with ActorLogging =>
 
   import context.dispatcher
@@ -133,7 +140,13 @@ trait HttpServer extends ControllerWorkflow with Configuration with Serializer {
   }
 }
 
-class ControllerActor extends ActorLogging with ActorConsumer with ActorProducer[ChunkStreamPart] with HttpServer with Configuration with Serializer {
+class ControllerActor 
+  extends ActorLogging 
+  with ActorConsumer 
+  with ActorProducer[ChunkStreamPart] 
+  with HttpServer 
+  with Configuration 
+  with Serializer {
 
   import context.dispatcher
 

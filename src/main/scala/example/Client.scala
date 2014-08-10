@@ -49,7 +49,10 @@ import scala.util.Failure
 import scala.util.Random
 import scala.util.Success
 
-trait HttpClient extends Configuration with Serializer {
+trait HttpClient 
+  extends Configuration 
+  with Serializer {
+    
   this: Actor with ActorLogging =>
 
   import context.dispatcher
@@ -95,7 +98,13 @@ trait HttpClient extends Configuration with Serializer {
 
 }
 
-class ClientActor extends ActorLogging with ActorConsumer with ActorProducer[ByteString] with HttpClient with Configuration with Serializer {
+class ClientActor 
+  extends ActorLogging 
+  with ActorConsumer 
+  with ActorProducer[ByteString] 
+  with HttpClient 
+  with Configuration 
+  with Serializer {
 
   import context.dispatcher
 
