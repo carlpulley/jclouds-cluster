@@ -38,7 +38,6 @@ object V {
   val SCALA = "2.11.1"
   val SCALACHECK = "1.11.4"
   val SCALATEST = "2.1.7"
-  val SLF4J = "1.7.5"
 }
 
 trait Dependencies {
