@@ -7,7 +7,7 @@ class ColouredLogging extends DefaultLogger {
   private val errorFormat = s"[${Console.BOLD}${Console.RED}ERROR${Console.RESET}] [${Console.GREEN}%s${Console.RESET}] [${Console.GREEN}%s${Console.RESET}] [${Console.GREEN}%s${Console.RESET}] ${Console.RED}%s%s${Console.RESET}"
   private val errorFormatWithoutCause = s"[${Console.BOLD}${Console.RED}ERROR${Console.RESET}] [${Console.GREEN}%s${Console.RESET}] [${Console.GREEN}%s${Console.RESET}] [${Console.GREEN}%s${Console.RESET}] ${Console.RED}%s${Console.RESET}"
   private val warningFormat = s"[${Console.BOLD}${Console.MAGENTA}WARN${Console.RESET}] [${Console.GREEN}%s${Console.RESET}] [${Console.GREEN}%s${Console.RESET}] [${Console.GREEN}%s${Console.RESET}] ${Console.MAGENTA}%s${Console.RESET}"
-  private val infoFormat = s"[${Console.BOLD}${Console.GREEN}INFO${Console.RESET}] [${Console.GREEN}%s${Console.RESET}] [${Console.GREEN}%s${Console.RESET}] [${Console.GREEN}%s${Console.RESET}] \033[38;5;121m%s${Console.RESET}"
+  private val infoFormat = s"[${Console.BOLD}${Console.GREEN}INFO${Console.RESET}] [${Console.GREEN}%s${Console.RESET}] [${Console.GREEN}%s${Console.RESET}] [${Console.GREEN}%s${Console.RESET}] ${Console.WHITE}%s${Console.RESET}"
   private val debugFormat = s"[${Console.BOLD}${Console.BLUE}DEBUG${Console.RESET}] [${Console.GREEN}%s${Console.RESET}] [${Console.GREEN}%s${Console.RESET}] [${Console.GREEN}%s${Console.RESET}] ${Console.BLUE}%s${Console.RESET}"
 
   override def error(event: Error): Unit = {
