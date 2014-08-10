@@ -57,7 +57,14 @@ trait HttpClient
 
   import context.dispatcher
 
-  val materializer = FlowMaterializer(MaterializerSettings())
+  val materializer = FlowMaterializer(
+    MaterializerSettings(
+      initialFanOutBufferSize = config.getInt("client.materializer.initialFanOutBufferSize"),
+      maxFanOutBufferSize     = config.getInt("client.materializer.maxFanOutBufferSize"),
+      initialInputBufferSize  = config.getInt("client.materializer.initialInputBufferSize"),
+      maximumInputBufferSize  = config.getInt("client.materializer.maximumInputBufferSize")
+    )
+  )
 
   val host = config.getString("controller.host")
   val port = config.getInt("controller.port")

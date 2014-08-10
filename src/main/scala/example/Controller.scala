@@ -103,7 +103,14 @@ trait HttpServer
   import context.dispatcher
 
   val cluster = Cluster(context.system)
-  val materializer = FlowMaterializer(MaterializerSettings())
+  val materializer = FlowMaterializer(
+    MaterializerSettings(
+      initialFanOutBufferSize = config.getInt("controller.materializer.initialFanOutBufferSize"),
+      maxFanOutBufferSize     = config.getInt("controller.materializer.maxFanOutBufferSize"),
+      initialInputBufferSize  = config.getInt("controller.materializer.initialInputBufferSize"),
+      maximumInputBufferSize  = config.getInt("controller.materializer.maximumInputBufferSize")
+    )
+  )
   val host = Cluster(context.system).selfAddress.host.getOrElse("localhost")
   val port = config.getInt("controller.port")
 
@@ -174,7 +181,7 @@ class ControllerActor
 
     case OnNext(msg: Message) if (!isActive || totalDemand == 0) =>
       log.warning(s"No demand - requeuing: $msg")
-      self ! OnNext(msg) // FIXME: does this impact demand and requested counts?
+      self ! OnNext(msg)
   }
 
   // Cluster events are only produced into HTTP message chunking flow if consumer demand allows

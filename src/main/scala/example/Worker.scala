@@ -61,6 +61,8 @@ class WorkerActor extends Actor with ActorLogging with Configuration {
       log.info(s"Received: $ping from $sender")
       val route = s"$tag-$hostname"
 
+      Thread.sleep(1000) // Simulate a workload
+
       if (Random.nextInt(config.getInt("worker.die")) == 1) {
         sender() ! Pong(s"$route says $msg")
       } else {
