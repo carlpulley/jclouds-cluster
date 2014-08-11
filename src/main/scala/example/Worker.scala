@@ -27,6 +27,7 @@ import akka.stream.actor.ActorConsumer.OnNext
 import akka.stream.actor.ActorProducer
 import ClusterMessages._
 import java.net.InetAddress
+import java.util.concurrent.TimeUnit
 import scala.util.Random
 
 class WorkerController extends ActorConsumer with ActorProducer[Message] with ActorLogging {
@@ -61,7 +62,8 @@ class WorkerActor extends Actor with ActorLogging with Configuration {
       log.info(s"Received: $ping from $sender")
       val route = s"$tag-$hostname"
 
-      Thread.sleep(1000) // Simulate a workload
+      // Workload simulation
+      Thread.sleep(config.getDuration("worker.workload", TimeUnit.MILLISECONDS))
 
       if (Random.nextInt(config.getInt("worker.die")) == 1) {
         sender() ! Pong(s"$route says $msg")
