@@ -47,7 +47,7 @@ class WorkerController extends ActorConsumer with ActorProducer[Message] with Ac
       request(1)
 
     case msg: Message if (isActive && totalDemand == 0) =>
-      log.info(s"No demand - requeuing $msg")
+      log.warning(s"No demand - requeuing $msg")
       self ! msg
   }
 

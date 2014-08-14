@@ -38,6 +38,7 @@ import akka.http.model.HttpEntity.LastChunk
 import akka.http.model.HttpMethods._
 import akka.http.model.HttpRequest
 import akka.http.model.HttpResponse
+import akka.http.model.StatusCodes
 import akka.http.model.Uri
 import akka.io.IO
 import akka.kernel.Bootable
@@ -116,8 +117,8 @@ trait HttpServer
 
   val bindingFuture = IO(Http)(context.system) ? Http.Bind(interface = host, port = port)
 
-  val requestHandler: HttpRequest => HttpResponse = {
-    case request @ HttpRequest(PUT, Uri.Path("/messages"), _, Chunked(_, chunks), _) =>
+  def requestHandler(request: HttpRequest): HttpResponse = request match {
+    case HttpRequest(PUT, Uri.Path("/messages"), _, Chunked(_, chunks), _) =>
       log.info(s"Received: $request")
 
       val (chunkConsumer, msgProducer) = chunkedFlow.build(materializer)
@@ -131,9 +132,13 @@ trait HttpServer
 
       HttpResponse()
 
-    case request @ HttpRequest(GET, Uri.Path("/messages"), _, _, _) =>
+    case HttpRequest(GET, Uri.Path("/messages"), _, _, _) =>
       log.info(s"Received: $request")
       HttpResponse(entity = Chunked(`application/octet-stream`, ActorProducer[ChunkStreamPart](self)))
+
+    case _ =>
+      log.error(s"Unexpected request: $request")
+      HttpResponse(status = StatusCodes.Forbidden)
   }
 
   bindingFuture foreach {
