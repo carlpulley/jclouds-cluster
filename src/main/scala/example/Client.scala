@@ -70,7 +70,7 @@ trait HttpClient
   val port = config.getInt("controller.port")
 
   def connection = 
-    (IO(Http)(context.system) ? Http.Connect(host, port = port)).mapTo[Http.OutgoingConnection]
+    (IO(Http)(context.system) ? Http.Connect(host, port = port, materializer = materializer)).mapTo[Http.OutgoingConnection]
 
   def sendRequest(request: HttpRequest): Future[HttpResponse] = 
     connection.flatMap {

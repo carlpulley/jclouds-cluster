@@ -115,7 +115,7 @@ trait HttpServer
   val host = Cluster(context.system).selfAddress.host.getOrElse("localhost")
   val port = config.getInt("controller.port")
 
-  val bindingFuture = IO(Http)(context.system) ? Http.Bind(interface = host, port = port)
+  val bindingFuture = IO(Http)(context.system) ? Http.Bind(interface = host, port = port, backlog = config.getInt("controller.backlog"), materializer = materializer)
 
   def requestHandler(request: HttpRequest): HttpResponse = request match {
     case HttpRequest(PUT, Uri.Path("/messages"), _, Chunked(_, chunks), _) =>
