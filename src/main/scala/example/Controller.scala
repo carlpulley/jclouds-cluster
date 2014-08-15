@@ -104,18 +104,17 @@ trait HttpServer
   import context.dispatcher
 
   val cluster = Cluster(context.system)
-  val materializer = FlowMaterializer(
-    MaterializerSettings(
-      initialFanOutBufferSize = config.getInt("controller.materializer.initialFanOutBufferSize"),
-      maxFanOutBufferSize     = config.getInt("controller.materializer.maxFanOutBufferSize"),
-      initialInputBufferSize  = config.getInt("controller.materializer.initialInputBufferSize"),
-      maximumInputBufferSize  = config.getInt("controller.materializer.maximumInputBufferSize")
-    )
+  val materializerSettings = MaterializerSettings(
+    initialFanOutBufferSize = config.getInt("controller.materializer.initialFanOutBufferSize"),
+    maxFanOutBufferSize     = config.getInt("controller.materializer.maxFanOutBufferSize"),
+    initialInputBufferSize  = config.getInt("controller.materializer.initialInputBufferSize"),
+    maximumInputBufferSize  = config.getInt("controller.materializer.maximumInputBufferSize")
   )
+  val materializer = FlowMaterializer(materializerSettings)
   val host = Cluster(context.system).selfAddress.host.getOrElse("localhost")
   val port = config.getInt("controller.port")
 
-  val bindingFuture = IO(Http)(context.system) ? Http.Bind(interface = host, port = port, materializer = materializer)
+  val bindingFuture = IO(Http)(context.system) ? Http.Bind(interface = host, port = port, materializerSettings = materializerSettings)
 
   def requestHandler(request: HttpRequest): HttpResponse = request match {
     case HttpRequest(PUT, Uri.Path("/messages"), _, Chunked(_, chunks), _) =>

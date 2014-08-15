@@ -57,20 +57,19 @@ trait HttpClient
 
   import context.dispatcher
 
-  val materializer = FlowMaterializer(
-    MaterializerSettings(
+  val materializerSettings = MaterializerSettings(
       initialFanOutBufferSize = config.getInt("client.materializer.initialFanOutBufferSize"),
       maxFanOutBufferSize     = config.getInt("client.materializer.maxFanOutBufferSize"),
       initialInputBufferSize  = config.getInt("client.materializer.initialInputBufferSize"),
       maximumInputBufferSize  = config.getInt("client.materializer.maximumInputBufferSize")
     )
-  )
+  val materializer = FlowMaterializer(materializerSettings)
 
   val host = config.getString("controller.host")
   val port = config.getInt("controller.port")
 
   def connection = 
-    (IO(Http)(context.system) ? Http.Connect(host, port = port, materializer = materializer)).mapTo[Http.OutgoingConnection]
+    (IO(Http)(context.system) ? Http.Connect(host, port = port, materializerSettings = materializerSettings)).mapTo[Http.OutgoingConnection]
 
   def sendRequest(request: HttpRequest): Future[HttpResponse] = 
     connection.flatMap {
