@@ -17,13 +17,12 @@ package cakesolutions.example
 
 package test
 
-import akka.actor.ActorRef
 import akka.actor.ActorSystem
 import akka.actor.Cancellable
-import akka.contrib.jul.JavaLogging
+import akka.event.Logging
 import scala.concurrent.duration._
 
-trait MessageInjector extends JavaLogging {
+trait MessageInjector {
   this: Configuration =>
 
   import ClusterMessages._
@@ -34,6 +33,7 @@ trait MessageInjector extends JavaLogging {
   import system.dispatcher
   
   private val clientSpeed = config.getDuration("client.speed", MILLISECONDS).milliseconds
+  private val log = Logging.getLogger(system, this.getClass)
 
   def fastProducer(toSend: Int, batch: Int = 2, sent: Int = 0): Cancellable = system.scheduler.scheduleOnce(clientSpeed) {
     require(client.nonEmpty && toSend > 0 && sent >= 0 && batch > 0)
