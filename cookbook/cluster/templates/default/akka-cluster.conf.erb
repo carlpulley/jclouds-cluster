@@ -3,6 +3,8 @@ seed-nodes = [ "<%= node[:cluster][:seedNode] %>" ]
 <%- end %>
 roles = [ "<%= node[:cluster][:role] %>" ]
 
+auto-down-unreachable-after = 30 s
+
 failure-detector {
   acceptable-heartbeat-pause = 5 s
   threshold = 12.0

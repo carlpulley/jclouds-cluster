@@ -8,3 +8,4 @@ supports "ubuntu", ">= 14.04"
 
 depends "hostsfile"
 depends "java"
+depends "ntp"

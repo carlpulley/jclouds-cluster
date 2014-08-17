@@ -7,3 +7,6 @@
 [submodule "cookbook/hostsfile"]
 	path = cookbook/hostsfile
 	url = https://github.com/customink-webops/hostsfile.git
+[submodule "cookbook/ntp"]
+	path = cookbook/ntp
+	url = https://github.com/gmiranda23/ntp.git

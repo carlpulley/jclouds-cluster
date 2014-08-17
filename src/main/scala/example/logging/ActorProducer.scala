@@ -13,18 +13,18 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <http://www.gnu.org/licenses/>.
 
-package cakesolutions.example
+package akka.stream.actor.logging
 
-import akka.actor.ActorSystem
-import akka.util.Timeout
-import com.typesafe.config.ConfigFactory
-import java.util.concurrent.TimeUnit.MINUTES
-import scala.concurrent.duration._
+import akka.actor.ActorLogging
+import akka.stream.actor.{ ActorProducer => OrigActorProducer }
 
-trait Configuration {
+trait ActorProducer[T] extends OrigActorProducer[T] with ActorLogging {
+  protected[akka] override def aroundReceive(receive: Receive, msg: Any): Unit = msg match {
+    case OrigActorProducer.Request(n) =>
+      log.info(s"Received Request(${Console.YELLOW}$n${Console.WHITE}) - [Total Demand] ${Console.YELLOW}$totalDemand${Console.WHITE}")
+      super.aroundReceive(receive, msg)
 
-  val config = ConfigFactory.load()
-
-  implicit val timeout = Timeout(config.getDuration("client.timeout", MINUTES).minutes)
-
+    case _ =>
+      super.aroundReceive(receive, msg)
+  }
 }

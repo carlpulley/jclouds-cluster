@@ -33,7 +33,8 @@ import com.typesafe.config.ConfigFactory
 import scala.concurrent.duration._
 import scala.concurrent.Future
 
-class DeltacloudProvisioner(val label: String, joinAddress: Option[Address] = None)(implicit system: ActorSystem) {
+class DeltacloudProvisioner(val label: String, joinAddress: Option[Address] = None)(implicit val system: ActorSystem) {
+
   import system.dispatcher
 
   val config       = ConfigFactory.load()
@@ -102,4 +103,5 @@ class DeltacloudProvisioner(val label: String, joinAddress: Option[Address] = No
         Future { () }
     }
   }
+
 }

@@ -14,6 +14,7 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 include_recipe "java"
+include_recipe "ntp"
 
 user node[:cluster][:service] do
   action :create

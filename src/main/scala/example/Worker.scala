@@ -24,13 +24,13 @@ import akka.cluster.Cluster
 import akka.kernel.Bootable
 import akka.stream.actor.ActorConsumer
 import akka.stream.actor.ActorConsumer.OnNext
-import akka.stream.actor.ActorProducer
+import akka.stream.actor.logging.{ ActorProducer => LoggingActorProducer }
 import ClusterMessages._
 import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 import scala.util.Random
 
-class WorkerController extends ActorConsumer with ActorProducer[Message] with ActorLogging {
+class WorkerController extends ActorConsumer with LoggingActorProducer[Message] with ActorLogging {
 
   override val requestStrategy = ActorConsumer.ZeroRequestStrategy
 
@@ -38,11 +38,11 @@ class WorkerController extends ActorConsumer with ActorProducer[Message] with Ac
 
   def receive = {
     case OnNext((ping: Ping, worker: ActorRef)) =>
-      log.info(s"Sending $ping to $worker")
+      log.info(s"Sending $ping to $worker - [Total Demand] ${Console.YELLOW}$totalDemand${Console.RESET}")
       worker ! ping
 
     case msg: Message if (isActive && totalDemand > 0) =>
-      log.info(s"Producing $msg to stream")
+      log.info(s"Producing $msg to stream - [Total Demand] ${Console.YELLOW}$totalDemand${Console.RESET}")
       onNext(msg)
       request(1)
 

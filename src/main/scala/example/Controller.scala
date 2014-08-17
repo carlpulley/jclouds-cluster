@@ -46,6 +46,7 @@ import akka.pattern.ask
 import akka.stream.actor.ActorConsumer
 import akka.stream.actor.ActorConsumer.OnNext
 import akka.stream.actor.ActorProducer
+import akka.stream.actor.logging.{ ActorProducer => LoggingActorProducer }
 import akka.stream.FlowMaterializer
 import akka.stream.MaterializerSettings
 import akka.stream.scaladsl.Duct
@@ -154,7 +155,7 @@ trait HttpServer
 class ControllerActor 
   extends ActorLogging 
   with ActorConsumer 
-  with ActorProducer[ChunkStreamPart] 
+  with LoggingActorProducer[ChunkStreamPart] 
   with HttpServer 
   with Configuration 
   with Serializer {
@@ -180,7 +181,7 @@ class ControllerActor
 
   def processingMessages: Receive = {
     case OnNext(msg: Message) if (isActive && totalDemand > 0) =>
-      log.info(s"Received response: $msg")
+      log.info(s"Received response: $msg - [Total Demand] ${Console.YELLOW}$totalDemand${Console.RESET}")
       onNext(Chunk(serialize(msg)))
 
     case OnNext(msg: Message) if (!isActive || totalDemand == 0) =>
@@ -200,14 +201,14 @@ class ControllerActor
       }
 
     case msg: MemberUp if (isActive && totalDemand > 0) =>
-      log.info(s"Received: $msg")
+      log.info(s"Received: $msg - [Total Demand] ${Console.YELLOW}$totalDemand${Console.RESET}")
       onNext(Chunk(serialize(msg)))
 
     case msg: MemberUp =>
       log.warning(s"No demand - ignoring: $msg")
 
     case msg: MemberExited if (isActive && totalDemand > 0) =>
-      log.info(s"Received: $msg")
+      log.info(s"Received: $msg - [Total Demand] ${Console.YELLOW}$totalDemand${Console.RESET}")
       onNext(Chunk(serialize(msg)))
 
     case msg: MemberExited =>
@@ -220,6 +221,7 @@ class ControllerActor
 }
 
 class ControllerNode extends Bootable with Configuration {
+
   implicit val system = ActorSystem(config.getString("akka.system"))
 
   val cluster = Cluster(system)
@@ -239,4 +241,5 @@ class ControllerNode extends Bootable with Configuration {
     controller = None
     system.shutdown
   }
+
 }

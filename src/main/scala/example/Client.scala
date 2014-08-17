@@ -18,6 +18,7 @@ package cakesolutions
 package example
 
 import akka.actor._
+import akka.actor.ActorDSL._
 import akka.cluster.ClusterEvent.MemberExited
 import akka.cluster.ClusterEvent.MemberUp
 import akka.contrib.jul.JavaLogging
@@ -35,6 +36,7 @@ import akka.pattern.ask
 import akka.stream.actor.ActorConsumer
 import akka.stream.actor.ActorConsumer.OnNext
 import akka.stream.actor.ActorProducer
+import akka.stream.actor.logging.{ ActorProducer => LoggingActorProducer }
 import akka.stream.FlowMaterializer
 import akka.stream.MaterializerSettings
 import akka.stream.scaladsl.Flow
@@ -107,7 +109,7 @@ trait HttpClient
 class ClientActor 
   extends ActorLogging 
   with ActorConsumer 
-  with ActorProducer[ByteString] 
+  with LoggingActorProducer[ByteString] 
   with HttpClient 
   with Configuration 
   with Serializer {
@@ -148,7 +150,7 @@ class ClientActor
 
   def processingMessages: Receive = {
     case ping: Ping if (addresses.size > 0 && isActive && totalDemand > 0) =>
-      log.info(s"Received: $ping")
+      log.info(s"Received: $ping - [Total Demand] ${Console.YELLOW}$totalDemand${Console.RESET}")
       val node = addresses.values.toList(Random.nextInt(addresses.size))
       onNext(ByteString(serialize((ping, node))))
 
@@ -159,7 +161,7 @@ class ClientActor
       log.warning(s"No demand - ignoring: $ping")
 
     case OnNext(ping: Ping) if (addresses.size > 0 && isActive && totalDemand > 0) =>
-      log.info(s"[Internal] Received: $ping")
+      log.info(s"[Internal] Received: $ping - [Total Demand] ${Console.YELLOW}$totalDemand${Console.RESET}")
       val node = addresses.values.toList(Random.nextInt(addresses.size))
       onNext(ByteString(serialize((ping, node))))
 
@@ -175,7 +177,7 @@ class ClientActor
 
   def clusterMessages: Receive = {
     case OnNext(msg @ MemberUp(member)) if (member.roles.contains("worker")) =>
-      log.info(s"Received: $msg with roles: ${member.roles}")
+      log.info(s"Received: $msg with roles: ${member.roles} - [Total Demand] ${Console.YELLOW}$totalDemand${Console.RESET}")
       val node = member.address
       val act = context.actorSelection(RootActorPath(node) / "user" / "worker")
       addresses = addresses + (node -> act)
@@ -192,145 +194,38 @@ class ClientActor
   def receive = Actor.emptyBehavior
 }
 
-class ClientNode extends Configuration with JavaLogging {
-  val systemName = config.getString("akka.system")
-
-  implicit val system = ActorSystem(systemName)
-
-  import system.dispatcher
+object ClientNode {
 
   var client: Option[ActorRef] = None
   var controller: Option[DeltacloudProvisioner] = None
   var machines = Map.empty[String, DeltacloudProvisioner]
 
-  val driver = config.getString("deltacloud.driver")
-  val password = 
-    try { 
-      Some(config.getString(s"deltacloud.$driver.password"))
-    } catch { 
-      case _: Throwable => None
-    }
-  val default_user_password = password.map(pw =>
-    s"""password: "$pw"
-    |chpasswd: { expire: False }
-    |"""
-  ).getOrElse("")
-  val ssh_keyname = config.getString(s"deltacloud.$driver.keyname")
-  // This is a single line file, so YAML indentation is not impacted
-  val ssh_key = 
-    try { 
-      Some(Source.fromFile(s"${config.getString("user.home")}/.ssh/$ssh_keyname.pub").mkString) 
-    } catch {
-      case _: Throwable => None
-    }
-  val ssh_authorized_keys = ssh_key.map(key => 
-    s"""ssh_authorized_keys:
-    |  - $key
-    |"""
-  ).getOrElse("")
-  val chef_url = config.getString("deltacloud.chef.url")
-  val chef_client = config.getString("deltacloud.chef.validation.client_name")
-  // We need to take care here that our indentation is preserved in our YAML configuration
-  val chef_validator = Source.fromFile(config.getString("deltacloud.chef.validation.pem")).getLines.mkString("\n|      ")
+}
 
-  val common_config = s"""
-      |$default_user_password
-      |$ssh_authorized_keys
-      |
-      |apt-upgrade: true
-      |  
-      |# Capture all subprocess output into a logfile
-      |output: {all: '| tee -a /var/log/cloud-init-output.log'}
-      |
-      |chef:
-      |  install_type: "packages"
-      |  force_install: false
-      |  
-      |  server_url: "$chef_url"
-      |  validation_name: "$chef_client"
-      |  validation_key: |
-      |      $chef_validator
-      |  
-      |  # A run list for a first boot json
-      |  run_list:
-      |   - "recipe[apt]"
-      |   - "recipe[java]"
-      |   - "recipe[cluster@0.1.10]"
-      |  
-      |  # Initial attributes used by the cookbooks
-      |  initial_attributes:
-      |     java:
-      |       jdk_version: 7
-  """
+trait ClientNode extends Configuration {
+
+  import system.dispatcher
+  import ClientNode._
+
+  implicit val system = ActorSystem(config.getString("akka.system"))
 
   object Connection {
     def open(): Unit = {
-      require(controller.nonEmpty)
+      require(controller.nonEmpty && client.isEmpty)
 
       // Here we connect via the gateways external IP address (this is port forwarded to the controller's private or internal IP address)
       client = Some(system.actorOf(Props[ClientActor], "Client"))
     }
 
-    def close(): Unit = ??? // TODO:
+    def close(): Unit = {
+      require(client.nonEmpty)
+
+      client.get ! PoisonPill
+      client = None
+    }
   }
 
-  object Provision {
-    val controllerNode: Future[Unit] = {
-      val node = new DeltacloudProvisioner("controller")
-
-      controller = Some(node)
-
-      node.bootstrap(s"""#cloud-config
-      |
-      |hostname: controller
-      |
-      $common_config
-      |     cluster:
-      |       role: "controller"
-      |       mainClass: "cakesolutions.example.ControllerNode"
-      |""".stripMargin
-      ).recover {
-        case exn =>
-          log.error(s"Failed to provision the 'controller' node: $exn")
-          controller = None
-          exn.printStackTrace()
-      }
-    }
-
-    def workerNode(label: String): Future[Unit] = {
-      require(controller.nonEmpty)
-
-      async {
-        // Here, workers connect to the controller via its private or internal IP address
-        val private_addresses = await(controller.get.private_addresses)
-
-        workerNode(label, private_addresses.head.ip)
-      }
-    }
-
-    private def workerNode(label: String, ipAddress: String): Future[Unit] = {
-        val joinAddress = Address("akka.tcp", systemName, ipAddress, 2552)
-        val node = new DeltacloudProvisioner(label, Some(joinAddress))
-
-        machines = machines + (label -> node)
-
-        node.bootstrap(s"""#cloud-config
-        |
-        |hostname: $label
-        |
-        $common_config
-        |     cluster:
-        |       role: "worker"
-        |       mainClass: "cakesolutions.example.WorkerNode"
-        |       seedNode: "${joinAddress.toString}"
-        |""".stripMargin
-        ).recover {
-          case exn =>
-            log.error(s"Failed to provision the '$label' node: $exn")
-            machines = machines - label
-        }
-      }
-  }
+  val Provision = new provision.Common with provision.ControllerNode with provision.WorkerNode
 
   def shutdown: Future[Unit] = {
     async {
@@ -351,4 +246,5 @@ class ClientNode extends Configuration with JavaLogging {
       machines = Map.empty[String, DeltacloudProvisioner]
     }
   }
+
 }
