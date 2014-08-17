@@ -33,6 +33,7 @@ trait Resolvers {
 
 object V {
   val AKKA = "2.3.4"
+  val ASPECTJ = "1.8.2"
   val CONFIG = "1.2.1"
   val LOG4J = "1.2.17"
   val SCALA = "2.11.1"
@@ -65,7 +66,10 @@ trait Dependencies {
     "com.typesafe"            % "config"      % V.CONFIG,
     // Async niceness
     "org.scala-lang.modules" %% "scala-async" % "0.9.1",
-    "org.scala-lang"          % "scala-library-all" % V.SCALA
+    "org.scala-lang"          % "scala-library-all" % V.SCALA,
+    // AspectJ monitoring
+    "org.aspectj"             % "aspectjweaver"         % V.ASPECTJ,
+    "org.aspectj"             % "aspectjrt"             % V.ASPECTJ
   )
 }
 
@@ -82,6 +86,8 @@ object DeltaCloudBuild extends Build with Resolvers with Dependencies {
     scalacOptions ++= Seq("-deprecation", "-unchecked", "-feature", "-language:experimental.macros"),
     javacOptions ++= Seq("-Xlint:unchecked", "-Xlint:deprecation"),
     javaOptions ++= Seq("-Xms256M", "-Xmx1024M", "-XX:+UseParallelGC"),
+    bashScriptExtraDefines += "addJava \"-javaagent:$lib_dir/org.aspectj.aspectjweaver-"+V.ASPECTJ+".jar\"",
+    bashScriptExtraDefines += "addJava \"-Daj.weaving.verbose=true\"",
     parallelExecution in Test := false,
     mainClass in Compile := Some("akka.kernel.Main"),
     packageDescription := "Ping-Pong Application (Clustered)",

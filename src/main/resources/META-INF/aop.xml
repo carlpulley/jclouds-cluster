@@ -1,0 +1,10 @@
+<aspectj>
+  <aspects>
+    <aspect name="cakesolutions.example.RequestAspect"/>
+  </aspects>
+
+  <weaver options="-XnoInline">
+    <include within="cakesolutions.example.*"/>
+    <include within="akka.actor.*"/>
+  </weaver>
+</aspectj>
