@@ -22,17 +22,18 @@ import akka.actor.ActorSystem
 import akka.actor.Props
 import akka.cluster.Cluster
 import akka.kernel.Bootable
-import akka.stream.actor.ActorConsumer
-import akka.stream.actor.ActorConsumer.OnNext
-import akka.stream.actor.logging.{ ActorProducer => LoggingActorProducer }
+import akka.stream.actor.ActorSubscriber
+import akka.stream.actor.ActorSubscriberMessage.OnNext
+import akka.stream.actor.logging.{ ActorPublisher => LoggingActorPublisher }
+import akka.stream.actor.ZeroRequestStrategy
 import ClusterMessages._
 import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 import scala.util.Random
 
-class WorkerController extends ActorConsumer with LoggingActorProducer[Message] with ActorLogging {
+class WorkerController extends ActorSubscriber with LoggingActorPublisher[Message] with ActorLogging {
 
-  override val requestStrategy = ActorConsumer.ZeroRequestStrategy
+  override val requestStrategy = ZeroRequestStrategy
 
   request(1)
 

@@ -43,17 +43,18 @@ import akka.http.model.Uri
 import akka.io.IO
 import akka.kernel.Bootable
 import akka.pattern.ask
-import akka.stream.actor.ActorConsumer
-import akka.stream.actor.ActorConsumer.OnNext
-import akka.stream.actor.ActorProducer
-import akka.stream.actor.logging.{ ActorProducer => LoggingActorProducer }
+import akka.stream.actor.ActorSubscriber
+import akka.stream.actor.ActorSubscriberMessage.OnNext
+import akka.stream.actor.ActorPublisher
+import akka.stream.actor.logging.{ ActorPublisher => LoggingActorPublisher }
+import akka.stream.actor.WatermarkRequestStrategy
 import akka.stream.FlowMaterializer
 import akka.stream.MaterializerSettings
 import akka.stream.scaladsl.Duct
 import akka.stream.scaladsl.Flow
 import ClusterMessages._
-import org.reactivestreams.api.Consumer
-import org.reactivestreams.api.Producer
+import org.reactivestreams.Subscriber
+import org.reactivestreams.Publisher
 import scala.async.Async.async
 import scala.async.Async.await
 import scala.concurrent.duration._
@@ -88,11 +89,11 @@ trait ControllerWorkflow
 
   val worker = context.actorOf(Props[WorkerController])
 
-  def workerFlow: Consumer[(Ping, ActorRef)] =
-    ActorConsumer(worker)
+  def workerFlow: Subscriber[(Ping, ActorRef)] =
+    ActorSubscriber(worker)
 
-  def resultFlow: Producer[Message] =
-    ActorProducer(worker)
+  def resultFlow: Publisher[Message] =
+    ActorPublisher(worker)
 }
 
 trait HttpServer 
@@ -111,7 +112,7 @@ trait HttpServer
     initialInputBufferSize  = config.getInt("controller.materializer.initialInputBufferSize"),
     maximumInputBufferSize  = config.getInt("controller.materializer.maximumInputBufferSize")
   )
-  val materializer = FlowMaterializer(materializerSettings)
+  implicit val materializer = FlowMaterializer(materializerSettings)
   val host = Cluster(context.system).selfAddress.host.getOrElse("localhost")
   val port = config.getInt("controller.port")
 
@@ -121,20 +122,20 @@ trait HttpServer
     case HttpRequest(PUT, Uri.Path("/messages"), _, Chunked(_, chunks), _) =>
       log.info(s"Received: $request")
 
-      val (chunkConsumer, msgProducer) = chunkedFlow.build(materializer)
+      val (chunkConsumer, msgProducer) = chunkedFlow.build()
 
       Flow(chunks)
-        .produceTo(materializer, chunkConsumer)
+        .produceTo(chunkConsumer)
       Flow(msgProducer)
-        .produceTo(materializer, workerFlow)
+        .produceTo(workerFlow)
       Flow(resultFlow)
-        .produceTo(materializer, ActorConsumer[Message](self))
+        .produceTo(ActorSubscriber[Message](self))
 
       HttpResponse()
 
     case HttpRequest(GET, Uri.Path("/messages"), _, _, _) =>
       log.info(s"Received: $request")
-      HttpResponse(entity = Chunked(`application/octet-stream`, ActorProducer[ChunkStreamPart](self)))
+      HttpResponse(entity = Chunked(`application/octet-stream`, ActorPublisher[ChunkStreamPart](self)))
 
     case _ =>
       log.error(s"Unexpected request: $request")
@@ -147,22 +148,22 @@ trait HttpServer
         case Http.IncomingConnection(_, requestProducer, responseConsumer) =>
           Flow(requestProducer)
             .map(requestHandler)
-            .produceTo(materializer, responseConsumer)
-      }.consume(materializer)
+            .produceTo(responseConsumer)
+      }
   }
 }
 
 class ControllerActor 
   extends ActorLogging 
-  with ActorConsumer 
-  with LoggingActorProducer[ChunkStreamPart] 
+  with ActorSubscriber
+  with LoggingActorPublisher[ChunkStreamPart]
   with HttpServer 
   with Configuration 
   with Serializer {
 
   import context.dispatcher
 
-  override val requestStrategy = ActorConsumer.WatermarkRequestStrategy(config.getInt("controller.watermark"))
+  override val requestStrategy = WatermarkRequestStrategy(config.getInt("controller.watermark"))
 
   var membershipScheduler: Option[Cancellable] = None
 

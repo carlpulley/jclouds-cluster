@@ -21,7 +21,6 @@ import akka.actor._
 import akka.actor.ActorDSL._
 import akka.cluster.ClusterEvent.MemberExited
 import akka.cluster.ClusterEvent.MemberUp
-import akka.contrib.jul.JavaLogging
 import akka.http.Http
 import akka.http.model.ContentTypes._
 import akka.http.model.HttpEntity.Chunk
@@ -33,10 +32,11 @@ import akka.http.model.HttpResponse
 import akka.http.model.Uri
 import akka.io.IO
 import akka.pattern.ask
-import akka.stream.actor.ActorConsumer
-import akka.stream.actor.ActorConsumer.OnNext
-import akka.stream.actor.ActorProducer
-import akka.stream.actor.logging.{ ActorProducer => LoggingActorProducer }
+import akka.stream.actor.ActorSubscriber
+import akka.stream.actor.ActorSubscriberMessage.OnNext
+import akka.stream.actor.ActorPublisher
+import akka.stream.actor.logging.{ ActorPublisher => LoggingActorPublisher }
+import akka.stream.actor.WatermarkRequestStrategy
 import akka.stream.FlowMaterializer
 import akka.stream.MaterializerSettings
 import akka.stream.scaladsl.Flow
@@ -46,7 +46,6 @@ import scala.async.Async.async
 import scala.async.Async.await
 import scala.concurrent.duration._
 import scala.concurrent.Future
-import scala.io.Source
 import scala.util.Failure
 import scala.util.Random
 import scala.util.Success
@@ -65,7 +64,7 @@ trait HttpClient
       initialInputBufferSize  = config.getInt("client.materializer.initialInputBufferSize"),
       maximumInputBufferSize  = config.getInt("client.materializer.maximumInputBufferSize")
     )
-  val materializer = FlowMaterializer(materializerSettings)
+  implicit val materializer = FlowMaterializer(materializerSettings)
 
   val host = config.getString("controller.host")
   val port = config.getInt("controller.port")
@@ -77,10 +76,10 @@ trait HttpClient
     connection.flatMap {
       case connect: Http.OutgoingConnection =>
         Flow(List(request -> 'NoContext))
-          .produceTo(materializer, connect.processor)
+          .produceTo(connect.processor)
         Flow(connect.processor)
           .map(_._1)
-          .toFuture(materializer)
+          .toFuture()
     }
 
   val httpConsumer =
@@ -98,25 +97,25 @@ trait HttpClient
               log.error("GET /messages closed")
               List.empty
           }
-          .produceTo(materializer, ActorConsumer(self))
+          .produceTo(ActorSubscriber(self))
     }
 
   val httpProducer =
-    sendRequest(HttpRequest(PUT, uri = Uri("/messages"), entity = Chunked(`application/octet-stream`, ActorProducer[ByteString](self), materializer)))
+    sendRequest(HttpRequest(PUT, uri = Uri("/messages"), entity = Chunked(`application/octet-stream`, ActorPublisher[ByteString](self), materializer)))
 
 }
 
 class ClientActor 
   extends ActorLogging 
-  with ActorConsumer 
-  with LoggingActorProducer[ByteString] 
+  with ActorSubscriber
+  with LoggingActorPublisher[ByteString]
   with HttpClient 
   with Configuration 
   with Serializer {
 
   import context.dispatcher
 
-  override val requestStrategy = ActorConsumer.WatermarkRequestStrategy(config.getInt("client.watermark"))
+  override val requestStrategy = WatermarkRequestStrategy(config.getInt("client.watermark"))
 
   var addresses = Map.empty[Address, ActorSelection]
 

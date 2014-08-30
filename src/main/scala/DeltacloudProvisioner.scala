@@ -49,8 +49,8 @@ class DeltacloudProvisioner(val label: String, joinAddress: Option[Address] = No
   implicit val deltacloudHttpClient = (request: HttpRequest) =>
     (IO(Http) ? Http.Connect(host, port = port)).flatMap {
       case connect: Http.OutgoingConnection =>
-        Flow(List(request -> 'NoContext)).produceTo(materializer, connect.processor)
-        Flow(connect.processor).map(_._1).toFuture(materializer)
+        Flow(List(request -> 'NoContext)).produceTo(connect.processor)
+        Flow(connect.processor).map(_._1).toFuture()
     }.mapTo[HttpResponse]
 
   var node: Option[Instance] = None

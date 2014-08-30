@@ -53,11 +53,9 @@ trait Dependencies {
     "com.typesafe.akka" %% "akka-remote" % V.AKKA,
     "com.typesafe.akka" %% "akka-cluster" % V.AKKA,
     "com.typesafe.akka" %% "akka-contrib" % V.AKKA,
-    "com.typesafe.akka" %% "akka-http-core-experimental" % "0.4",
-    "com.typesafe.akka" %% "akka-stream-experimental" % "0.4",
     "com.typesafe.akka" %% "akka-persistence-experimental" % V.AKKA,
-    "com.typesafe.akka" %% "akka-http-core-experimental" % "0.4",
-    "com.typesafe.akka" %% "akka-stream-experimental" % "0.4",
+    "com.typesafe.akka" %% "akka-http-core-experimental" % "0.6",
+    "com.typesafe.akka" %% "akka-stream-experimental" % "0.6",
     "com.typesafe.akka" %% "akka-testkit" % V.AKKA % "test"
   )
 
@@ -66,10 +64,7 @@ trait Dependencies {
     "com.typesafe"            % "config"      % V.CONFIG,
     // Async niceness
     "org.scala-lang.modules" %% "scala-async" % "0.9.1",
-    "org.scala-lang"          % "scala-library-all" % V.SCALA,
-    // AspectJ monitoring
-    "org.aspectj"             % "aspectjweaver"         % V.ASPECTJ,
-    "org.aspectj"             % "aspectjrt"             % V.ASPECTJ
+    "org.scala-lang"          % "scala-library-all" % V.SCALA
   )
 }
 
@@ -86,8 +81,6 @@ object DeltaCloudBuild extends Build with Resolvers with Dependencies {
     scalacOptions ++= Seq("-deprecation", "-unchecked", "-feature", "-language:experimental.macros"),
     javacOptions ++= Seq("-Xlint:unchecked", "-Xlint:deprecation"),
     javaOptions ++= Seq("-Xms256M", "-Xmx1024M", "-XX:+UseParallelGC"),
-    bashScriptExtraDefines += "addJava \"-javaagent:$lib_dir/org.aspectj.aspectjweaver-"+V.ASPECTJ+".jar\"",
-    bashScriptExtraDefines += "addJava \"-Daj.weaving.verbose=true\"",
     parallelExecution in Test := false,
     mainClass in Compile := Some("akka.kernel.Main"),
     packageDescription := "Ping-Pong Application (Clustered)",

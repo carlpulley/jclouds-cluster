@@ -15,7 +15,6 @@
 
 package cakesolutions.example
 
-import akka.actor.ActorSystem
 import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
 import java.util.concurrent.TimeUnit.MINUTES

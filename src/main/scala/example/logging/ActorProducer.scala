@@ -16,11 +16,12 @@
 package akka.stream.actor.logging
 
 import akka.actor.ActorLogging
-import akka.stream.actor.{ ActorProducer => OrigActorProducer }
+import akka.stream.actor.{ ActorPublisher => OrigActorPublisher }
+import akka.stream.actor.ActorPublisherMessage.Request
 
-trait ActorProducer[T] extends OrigActorProducer[T] with ActorLogging {
+trait ActorPublisher[T] extends OrigActorPublisher[T] with ActorLogging {
   protected[akka] override def aroundReceive(receive: Receive, msg: Any): Unit = msg match {
-    case OrigActorProducer.Request(n) =>
+    case Request(n) =>
       log.info(s"Received Request(${Console.YELLOW}$n${Console.WHITE}) - [Total Demand] ${Console.YELLOW}$totalDemand${Console.WHITE}")
       super.aroundReceive(receive, msg)
 
