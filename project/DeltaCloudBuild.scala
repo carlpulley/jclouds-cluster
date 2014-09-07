@@ -27,7 +27,8 @@ trait Resolvers {
     "Typesafe Snapshots" at "http://repo.typesafe.com/typesafe/snapshots/",
     "Sonatype Releases" at "http://oss.sonatype.org/content/repositories/releases",
     "Sonatype Snapshots" at "https://oss.sonatype.org/content/repositories/snapshots",
-    "Spray Repository" at "http://repo.spray.io"
+    "Spray Repository" at "http://repo.spray.io",
+    "Scalaz Bintray Repo" at "http://dl.bintray.com/scalaz/releases"
   )
 }
 
@@ -64,7 +65,9 @@ trait Dependencies {
     "com.typesafe"            % "config"      % V.CONFIG,
     // Async niceness
     "org.scala-lang.modules" %% "scala-async" % "0.9.1",
-    "org.scala-lang"          % "scala-library-all" % V.SCALA
+    "org.scala-lang"          % "scala-library-all" % V.SCALA,
+    // Scalaz niceness
+    "org.scalaz.stream"      %% "scalaz-stream" % "0.5a"
   )
 }
 
@@ -76,7 +79,7 @@ object DeltaCloudBuild extends Build with Resolvers with Dependencies {
     shellPrompt := { st => Project.extract(st).currentProject.id + "> " },
     autoCompilerPlugins := true,
     resolvers := DeltaCloudResolvers,
-    libraryDependencies := Akka ++ Miscellaneous,
+    libraryDependencies := Akka ++ Miscellaneous ++ Testing,
     checksums := Seq("sha1", "md5"),
     scalacOptions ++= Seq("-deprecation", "-unchecked", "-feature", "-language:experimental.macros"),
     javacOptions ++= Seq("-Xlint:unchecked", "-Xlint:deprecation"),

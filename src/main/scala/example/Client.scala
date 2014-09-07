@@ -18,7 +18,6 @@ package cakesolutions
 package example
 
 import akka.actor._
-import akka.actor.ActorDSL._
 import akka.cluster.ClusterEvent.MemberExited
 import akka.cluster.ClusterEvent.MemberUp
 import akka.http.Http
