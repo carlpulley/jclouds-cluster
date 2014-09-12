@@ -82,7 +82,7 @@ object Subnet {
         "network_id" -> Some(network_id), 
         "address_block" -> Some(address_block), 
         "name" -> name
-    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToSubnet))
+    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration).map(strictToSubnet).toFuture)
 
   def destroy(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
     pipeline(HttpRequest(DELETE, uri = Uri(s"/api/subnets/$id")))

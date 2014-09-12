@@ -67,7 +67,7 @@ object StorageSnapshot {
   def index(id: Option[String] = None)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
     pipeline(HttpRequest(GET, uri = Uri("/api/storage_snapshots").copy(query = Query(Map(
       "id" -> id
-    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToStorageSnapshotList))
+    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))).flatMap(_.entity.toStrict(timeout.duration).map(strictToStorageSnapshotList).toFuture)
 
   def create(
     volume_id: String,
@@ -78,7 +78,7 @@ object StorageSnapshot {
         "volume_id" -> Some(volume_id), 
         "name" -> name, 
         "description" -> description
-    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToStorageSnapshot))
+    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration).map(strictToStorageSnapshot).toFuture)
 
   def destroy(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
     pipeline(HttpRequest(DELETE, uri = Uri(s"/api/storage_snapshots/$id")))

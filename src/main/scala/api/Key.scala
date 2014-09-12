@@ -68,7 +68,7 @@ object Key {
   def index(id: Option[String] = None)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
     pipeline(HttpRequest(GET, uri = Uri("/api/keys").copy(query = Query(Map(
       "id" -> id
-    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToKeyList))
+    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))).flatMap(_.entity.toStrict(timeout.duration).map(strictToKeyList).toFuture)
 
   def show(id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
     pipeline(HttpRequest(GET, uri = Uri(s"/api/keys/$id")))
@@ -80,7 +80,7 @@ object Key {
     pipeline(HttpRequest(POST, uri = Uri("/api/keys"), entity = Strict(ContentType(`application/x-www-form-urlencoded`), ByteString(Map(
         "name" -> Some(name), 
         "public_key" -> public_key
-    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToKey))
+    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration).map(strictToKey).toFuture)
 
   def destroy(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
     pipeline(HttpRequest(DELETE, uri = Uri(s"/api/keys/$id")))

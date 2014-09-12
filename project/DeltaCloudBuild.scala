@@ -34,6 +34,7 @@ trait Resolvers {
 
 object V {
   val AKKA = "2.3.4"
+  val AKKAHTTP = "0.7"
   val ASPECTJ = "1.8.2"
   val CONFIG = "1.2.1"
   val LOG4J = "1.2.17"
@@ -55,8 +56,8 @@ trait Dependencies {
     "com.typesafe.akka" %% "akka-cluster" % V.AKKA,
     "com.typesafe.akka" %% "akka-contrib" % V.AKKA,
     "com.typesafe.akka" %% "akka-persistence-experimental" % V.AKKA,
-    "com.typesafe.akka" %% "akka-http-core-experimental" % "0.6",
-    "com.typesafe.akka" %% "akka-stream-experimental" % "0.6",
+    "com.typesafe.akka" %% "akka-http-core-experimental" % V.AKKAHTTP,
+    "com.typesafe.akka" %% "akka-stream-experimental" % V.AKKAHTTP,
     "com.typesafe.akka" %% "akka-testkit" % V.AKKA % "test"
   )
 

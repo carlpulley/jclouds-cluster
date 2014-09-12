@@ -65,7 +65,7 @@ object Metric {
   def index(id: Option[String] = None)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
     pipeline(HttpRequest(GET, uri = Uri("/api/metrics").copy(query = Query(Map(
       "id" -> id
-    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToMetricList))
+    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))).flatMap(_.entity.toStrict(timeout.duration).map(strictToMetricList).toFuture)
 
   def show(id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
     pipeline(HttpRequest(GET, uri = Uri(s"/api/metrics/$id")))

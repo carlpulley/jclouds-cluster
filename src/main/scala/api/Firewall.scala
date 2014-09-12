@@ -96,7 +96,7 @@ object Firewall {
   def index(id: Option[String] = None)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
     pipeline(HttpRequest(GET, uri = Uri("/api/firewalls").copy(query = Query(Map(
       "id" -> id
-    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToFirewallList))
+    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))).flatMap(_.entity.toStrict(timeout.duration).map(strictToFirewallList).toFuture)
 
   def show(id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
     pipeline(HttpRequest(GET, uri = Uri(s"/api/firewalls/$id")))
@@ -108,7 +108,7 @@ object Firewall {
     pipeline(HttpRequest(POST, uri = Uri("/api/firewalls"), entity = Strict(ContentType(`application/x-www-form-urlencoded`), ByteString(Map(
         "name" -> Some(name), 
         "description" -> description
-    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToFirewall))
+    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration).map(strictToFirewall).toFuture)
 
   def destroy(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
     pipeline(HttpRequest(DELETE, uri = Uri(s"/api/firewalls/$id")))
@@ -123,6 +123,6 @@ object Firewall {
       "protocol" -> protocol,
       "port_from" -> port_from.toString,
       "port_to" -> port_to.toString
-    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToFirewall))
+    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration).map(strictToFirewall).toFuture)
 
 }

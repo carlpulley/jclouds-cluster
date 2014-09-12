@@ -78,7 +78,7 @@ object Image {
       "id" -> id,
       "architecture" -> architecture,
       "owner_id" -> owner_id
-    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToImageList))
+    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))).flatMap(_.entity.toStrict(timeout.duration).map(strictToImageList).toFuture)
 
   def show(id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse]) = 
     pipeline(HttpRequest(GET, uri = Uri(s"/api/images/$id")))
@@ -92,7 +92,7 @@ object Image {
         "instance_id" -> Some(instance_id), 
         "name" -> name, 
         "description" -> description
-    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToImage))
+    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration).map(strictToImage).toFuture)
 
   def destroy(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
     pipeline(HttpRequest(DELETE, uri = Uri(s"/api/images/$id")))

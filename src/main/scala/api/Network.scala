@@ -78,7 +78,7 @@ object Network {
     pipeline(HttpRequest(POST, uri = Uri("/api/networks"), entity = Strict(ContentType(`application/x-www-form-urlencoded`), ByteString(Map(
         "address_block" -> address_block,
         "name" -> name
-    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToNetwork))
+    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration).map(strictToNetwork).toFuture)
 
   def destroy(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
     pipeline(HttpRequest(DELETE, uri = Uri(s"/api/networks/$id")))

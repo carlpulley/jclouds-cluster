@@ -66,13 +66,13 @@ object Address {
   def index(id: Option[String] = None)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
     pipeline(HttpRequest(GET, uri = Uri("/api/addresses").copy(query = Query(Map(
     "id" -> id
-    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToAddressList))
+    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))).flatMap(_.entity.toStrict(timeout.duration).map(strictToAddressList).toFuture)
 
   def show(id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
-    pipeline(HttpRequest(GET, uri = Uri(s"/api/addresses/$id"))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToAddress))
+    pipeline(HttpRequest(GET, uri = Uri(s"/api/addresses/$id"))).flatMap(_.entity.toStrict(timeout.duration).map(strictToAddress).toFuture)
 
   def create()(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
-    pipeline(HttpRequest(POST, uri = Uri("/api/addresses"))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToAddress))
+    pipeline(HttpRequest(POST, uri = Uri("/api/addresses"))).flatMap(_.entity.toStrict(timeout.duration).map(strictToAddress).toFuture)
 
   def destroy(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
     pipeline(HttpRequest(DELETE, uri = Uri(s"/api/addresses/$id")))

@@ -71,6 +71,6 @@ object Driver {
     pipeline(HttpRequest(GET, uri = Uri("/api/drivers").copy(query = Query(Map(
       "id" -> id,
       "state" -> state
-    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToDriverList))
+    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))).flatMap(_.entity.toStrict(timeout.duration).map(strictToDriverList).toFuture)
 
 }

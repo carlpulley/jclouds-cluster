@@ -42,7 +42,7 @@ class DeltacloudProvisioner(val label: String, joinAddress: Option[Address] = No
   val port         = config.getInt("deltacloud.port")
   val driver       = config.getString("deltacloud.driver")
   
-  implicit val materializer = FlowMaterializer(MaterializerSettings())
+  implicit val materializer = FlowMaterializer(MaterializerSettings(system))
 
   implicit val timeout = Timeout(config.getInt("deltacloud.timeout").minutes)
 

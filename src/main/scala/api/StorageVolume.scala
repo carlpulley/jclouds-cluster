@@ -87,7 +87,7 @@ object StorageVolume {
     pipeline(HttpRequest(GET, uri = Uri("/api/storage_volumes").copy(query = Query(Map(
       "id" -> id,
       "state" -> state
-    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToStorageVolumeList))
+    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))).flatMap(_.entity.toStrict(timeout.duration).map(strictToStorageVolumeList).toFuture)
 
   def create(
     snapshot_id: Option[String] = None,
@@ -102,7 +102,7 @@ object StorageVolume {
         "realm_id" -> realm_id, 
         "name" -> name, 
         "description" -> description
-    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToStorageVolume))
+    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration).map(strictToStorageVolume).toFuture)
 
   def destroy(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
     pipeline(HttpRequest(DELETE, uri = Uri(s"/api/storage_volumes/$id")))
@@ -115,7 +115,7 @@ object StorageVolume {
     pipeline(HttpRequest(POST, uri = Uri(s"/api/storage_volumes/$id/attach"), entity = Strict(ContentType(`application/x-www-form-urlencoded`), ByteString(Map(
         "instance_id" -> Some(instance_id), 
         "device" -> device
-    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToStorageVolume))
+    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration).map(strictToStorageVolume).toFuture)
 
   def detach(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
     pipeline(HttpRequest(POST, uri = Uri(s"/api/storage_volumes/$id/detach")))

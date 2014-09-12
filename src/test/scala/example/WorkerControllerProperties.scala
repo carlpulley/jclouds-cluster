@@ -34,12 +34,7 @@ object WorkerControllerProperties extends Properties("WorkerController") with Co
 
   import ClusterMessages._
 
-  val materializerSettings = MaterializerSettings(
-    initialFanOutBufferSize = config.getInt("client.materializer.initialFanOutBufferSize"),
-    maxFanOutBufferSize     = config.getInt("client.materializer.maxFanOutBufferSize"),
-    initialInputBufferSize  = config.getInt("client.materializer.initialInputBufferSize"),
-    maximumInputBufferSize  = config.getInt("client.materializer.maximumInputBufferSize")
-  )
+  val materializerSettings = MaterializerSettings(config.getConfig("client.materializer"))
 
   implicit val system = ActorSystem("TestSystem")
   implicit val materializer = FlowMaterializer(materializerSettings)

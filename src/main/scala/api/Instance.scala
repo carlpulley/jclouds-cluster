@@ -78,7 +78,7 @@ object Instance {
   }
 
   def show(id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
-    pipeline(HttpRequest(GET, uri = Uri(s"/api/instances/$id"))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToInstance))
+    pipeline(HttpRequest(GET, uri = Uri(s"/api/instances/$id"))).flatMap(_.entity.toStrict(timeout.duration).map(strictToInstance).toFuture)
 
   def index(
     id: Option[String] = None, 
@@ -89,7 +89,7 @@ object Instance {
       "id" -> id,
       "state" -> state,
       "realm_id" -> realm_id
-    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToInstanceList))
+    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))).flatMap(_.entity.toStrict(timeout.duration).map(strictToInstanceList).toFuture)
 
   def create(
     image_id: String,
@@ -126,7 +126,7 @@ object Instance {
         "snapshot_id" -> snapshot_id, 
         "device_name" -> device_name, 
         "sandbox" -> sandbox
-    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToInstance))
+    ).flatMap(kv => kv._2.map(v => (s"${kv._1}=${v}"))).mkString("&"))))).flatMap(_.entity.toStrict(timeout.duration).map(strictToInstance).toFuture)
 
   def reboot(id: String)(implicit pipeline: HttpRequest => Future[HttpResponse]) = 
     pipeline(HttpRequest(POST, uri = Uri(s"/api/instances/$id/reboot")))

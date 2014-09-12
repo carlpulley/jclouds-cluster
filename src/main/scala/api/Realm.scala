@@ -68,9 +68,9 @@ object Realm {
     pipeline(HttpRequest(GET, uri = Uri("/api/realms").copy(query = Query(Map(
       "id" -> id,
       "state" -> state
-    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToRealmList))
+    ).flatMap(kv => kv._2.map(v => (kv._1 -> v))))))).flatMap(_.entity.toStrict(timeout.duration).map(strictToRealmList).toFuture)
 
   def show(id: String)(implicit ec: ExecutionContext, pipeline: HttpRequest => Future[HttpResponse], timeout: Timeout, materializer: FlowMaterializer) = 
-    pipeline(HttpRequest(GET, uri = Uri(s"/api/realms/$id"))).flatMap(_.entity.toStrict(timeout.duration, materializer).map(strictToRealm))
+    pipeline(HttpRequest(GET, uri = Uri(s"/api/realms/$id"))).flatMap(_.entity.toStrict(timeout.duration).map(strictToRealm).toFuture)
 
 }
