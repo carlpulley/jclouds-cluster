@@ -26,7 +26,7 @@ trait MessageInjector {
   this: Configuration =>
 
   import ClusterMessages._
-  import ClientNode._
+  import client.ClientNode._
 
   implicit val system: ActorSystem
 

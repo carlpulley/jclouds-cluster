@@ -39,7 +39,7 @@ object V {
   val CONFIG = "1.2.1"
   val LOG4J = "1.2.17"
   val SCALA = "2.11.1"
-  val SCALACHECK = "1.11.4"
+  val SCALACHECK = "1.11.5"
   val SCALATEST = "2.1.7"
 }
 

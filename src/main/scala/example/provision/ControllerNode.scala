@@ -24,7 +24,7 @@ import scala.concurrent.Future
 trait ControllerNode extends Common {
 
   import system.dispatcher
-  import ClientNode._
+  import client.ClientNode._
 
   val controllerNode: Future[Unit] = {
     val node = new DeltacloudProvisioner("controller")

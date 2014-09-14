@@ -27,7 +27,7 @@ import scala.concurrent.Future
 trait WorkerNode extends Common {
 
   import system.dispatcher
-  import ClientNode._
+  import client.ClientNode._
 
   def workerNode(label: String): Future[Unit] = {
     require(controller.nonEmpty)
